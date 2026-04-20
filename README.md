@@ -1,4 +1,4 @@
-# NanaBanana Studio Bot
+# image creator | INTIMNO Bot
 
 Telegram-бот для генерации профессиональных фотографий белья через NanaBanana Pro (Replicate).
 
