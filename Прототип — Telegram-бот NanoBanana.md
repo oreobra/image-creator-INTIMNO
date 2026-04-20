@@ -1,23 +1,37 @@
-# Прототип Telegram-бота для генерации изображений через NanoBanana Pro
+# Telegram-бот NanaBanana Studio — Документация
 
-> Версия: 1.0 — апрель 2026  
-> Контакт для вопросов: @oreobra
+> Версия: 2.0 — апрель 2026  
+> Контакт для вопросов: @oreobra  
+> Репозиторий: github.com/oreobra/image-creator-INTIMNO
 
 ---
 
 ## 1. ЧТО ДЕЛАЕТ БОТ
 
-Бот помогает генерировать профессиональные изображения женского белья (трусы) через NanaBanana Pro. Он умеет анализировать референсы, составлять промпты и запускать генерации — с реальным изображением трусов как основой. Без исходника генерация не запускается.
+Бот генерирует профессиональные фотографии женского белья (трусы) через NanaBanana Pro на платформе Replicate. Анализирует референсы и текстовые описания через Claude Sonnet, составляет промпты и запускает генерацию. Без фото трусов генерация не запускается — жёсткое условие.
+
+**Бренд дополнительных элементов:** INTIMNO
 
 ---
 
 ## 2. ФУНКЦИИ БОТА
 
-### Функция 1 — «По референсу»
-Пользователь присылает любое понравившееся изображение → бот анализирует его стиль, угол, свет, фон, настроение → составляет промпт в этом стиле → просит прислать фото трусов → запускает генерацию в NanaBanana Pro → возвращает результат.
+### Функция 1 — «По референсу» (`/reference`)
+Пользователь присылает любое понравившееся изображение → Claude анализирует стиль, угол, свет, фон, настроение → составляет **2 варианта промпта** → просит прислать фото трусов → предлагает добавить доп. элементы → запускает **2 генерации параллельно** → возвращает **2 PNG-файла**.
 
-### Функция 2 — «По стилю»
-Пользователь присылает фото трусов → выбирает стиль из меню (🌸 Нежный / 🌑 Тёмный) → бот прогоняет 5 готовых промптов этого стиля с изображением трусов через NanaBanana Pro → отправляет 5 готовых изображений.
+### Функция 2 — «По стилю» (`/style`)
+Пользователь присылает фото трусов → выбирает стиль из меню **4 стилей** → предлагаются доп. элементы → бот прогоняет **3 промпта** выбранного стиля параллельно через NanaBanana Pro → отправляет **3 PNG-файла**.
+
+### Функция 3 — «Описать стиль» (`/describe`)
+Пользователь описывает стиль текстом (на русском или английском) → Claude составляет промпт → просит прислать фото трусов → предлагает доп. элементы → генерирует **1 PNG-файл**.
+
+### Доп. элементы (во всех функциях)
+После получения фото трусов в любой функции бот предлагает добавить в кадр:
+- 📇 Визитку с брендом INTIMNO
+- 📖 Журнал INTIMNO
+- ✏️ Любой реквизит словами
+- 🖼 Реквизит фотографией (Claude анализирует и описывает его)
+- ✅ Без добавок — сразу к генерации
 
 ---
 
@@ -26,57 +40,111 @@
 ### Flow 1 — По референсу
 
 ```
-Пользователь → присылает референс-изображение
+Пользователь → /reference
      ↓
-Бот анализирует: угол, свет, фон, пропсы, настроение, тип кадра
+Бот просит прислать референс-изображение
      ↓
-Бот составляет промпт по структуре из инструкции
+Пользователь → присылает референс (фото или файл PNG/JPG/JPEG)
      ↓
-Бот отправляет промпт пользователю + просит прислать фото трусов
+Claude анализирует: тип кадра, угол, свет, фон, пропсы, настроение
      ↓
-Пользователь → присылает изображение трусов
+Бот составляет 2 варианта промпта и показывает их пользователю
      ↓
-Бот проверяет: изображение получено? → если нет → "Пожалуйста, пришли фото трусов"
+Бот просит прислать фото трусов
      ↓
-Бот отправляет [промпт + изображение трусов] в NanaBanana Pro
+Пользователь → присылает фото трусов (фото или файл)
      ↓
-Бот возвращает готовое изображение пользователю
+Бот показывает меню доп. элементов
+     ↓
+Пользователь → выбирает элемент или «Без добавок»
+     ↓
+Бот запускает 2 генерации параллельно в NanaBanana Pro
+     ↓
+Бот отправляет 2 PNG-файла пользователю
 ```
-
-**Важно:** бот не запускает генерацию, пока не получил изображение трусов. Это жёсткое условие.
 
 ---
 
 ### Flow 2 — По стилю
 
 ```
-Пользователь → присылает фото трусов
+Пользователь → /style
      ↓
-Бот проверяет: изображение получено? → если нет → "Сначала пришли фото трусов"
+Бот просит прислать фото трусов
+     ↓
+Пользователь → присылает фото трусов (фото или файл)
      ↓
 Бот показывает меню стилей:
      [🌸 Нежный]  [🌑 Тёмный]
+     [💎 Rich]    [🎲 Смешанное]
      ↓
 Пользователь выбирает стиль
      ↓
-Бот запускает 5 промптов этого стиля параллельно в NanaBanana Pro
-(каждый промпт идёт вместе с изображением трусов)
+Бот показывает меню доп. элементов
      ↓
-Бот отправляет 5 изображений пользователю (по мере готовности или пачкой)
+Пользователь → выбирает элемент или «Без добавок»
+     ↓
+Бот запускает 3 промпта выбранного стиля параллельно в NanaBanana Pro
+     ↓
+Бот отправляет 3 PNG-файла пользователю
+```
+
+---
+
+### Flow 3 — Описать стиль
+
+```
+Пользователь → /describe
+     ↓
+Бот просит описать стиль словами
+     ↓
+Пользователь → пишет описание (русский или английский)
+     ↓
+Claude составляет промпт по описанию и показывает его
+     ↓
+Бот просит прислать фото трусов
+     ↓
+Пользователь → присылает фото трусов (фото или файл)
+     ↓
+Бот показывает меню доп. элементов
+     ↓
+Пользователь → выбирает элемент или «Без добавок»
+     ↓
+Бот генерирует 1 изображение в NanaBanana Pro
+     ↓
+Бот отправляет PNG-файл пользователю
+```
+
+---
+
+### Flow доп. элементов (шаг внутри всех flow)
+
+```
+Бот показывает меню:
+[📇 Визитка]          [📖 Журнал INTIMNO]
+[✏️ Описать словами]  [🖼 Прислать фото]
+[✅ Без добавок — генерировать]
+     ↓
+Визитка → добавляет в промпт: "a small elegant business card with brand name INTIMNO placed beside"
+Журнал  → добавляет в промпт: "an INTIMNO brand magazine placed beside"
+Описать → пользователь пишет текст → добавляется в промпт
+Фото    → пользователь присылает фото → Claude описывает объект → добавляется в промпт
+Без добавок → генерация запускается без изменений
 ```
 
 ---
 
 ## 4. КОМАНДЫ БОТА
 
-| Команда | Описание |
-|---------|----------|
-| `/start` | Приветствие и краткая инструкция |
-| `/help` | Подробная справка: как пользоваться |
-| `/reference` | Запустить Функцию 1 (по референсу) |
-| `/style` | Запустить Функцию 2 (по стилю) |
-| `/styles` | Показать описание стилей |
-| `/cancel` | Отменить текущий процесс |
+| Команда | Описание | Результат |
+|---------|----------|-----------|
+| `/start` | Приветствие и список команд | — |
+| `/help` | Подробная справка по всем функциям | — |
+| `/reference` | Запустить Функцию 1 (по референсу) | 2 PNG |
+| `/style` | Запустить Функцию 2 (по стилю) | 3 PNG |
+| `/describe` | Запустить Функцию 3 (описать стиль) | 1 PNG |
+| `/styles` | Показать описание всех 4 стилей | — |
+| `/cancel` | Отменить текущий процесс | — |
 
 ---
 
@@ -86,19 +154,16 @@
 ```
 Привет! 👋
 
-Я помогаю генерировать профессиональные изображения твоего белья через NanaBanana Pro.
+Я генерирую профессиональные фото белья с помощью NanaBanana Pro.
 
-У меня есть две функции:
+📋 Доступные команды:
+/reference — по референсу
+/style — по стилю из каталога (4 стиля)
+/describe — описать стиль своими словами
+/styles — описание стилей из каталога
+/cancel — отменить текущее действие
 
-🔍 /reference — ты присылаешь референс (любое понравившееся фото), 
-я анализирую стиль и создаю похожее изображение с твоими трусами.
-
-🎨 /style — ты присылаешь фото трусов, 
-выбираешь стиль, я генерирую 5 изображений сразу.
-
-Для всех генераций нужно фото твоих трусов — именно они будут в кадре.
-
-Если что-то не понятно → /help или напиши @oreobra
+Подробная инструкция → /help
 ```
 
 ---
@@ -107,46 +172,88 @@
 ```
 📖 Как пользоваться ботом:
 
-──────────────────────
-🔍 ФУНКЦИЯ 1 — ПО РЕФЕРЕНСУ
-──────────────────────
+────────────────────
+🔍 ФУНКЦИЯ 1 — ПО РЕФЕРЕНСУ (/reference)
+────────────────────
 1. Напиши /reference
-2. Пришли любое фото в нужном тебе стиле (с Pinterest, из интернета, свой референс)
-3. Я проанализирую кадр и предложу промпт
+2. Пришли любое фото в нужном тебе стиле
+3. Я проанализирую кадр и составлю промпт
 4. Пришли фото своих трусов
-5. Получи готовое изображение
+5. Получи готовые изображения (PNG-файлами)
 
-──────────────────────
-🎨 ФУНКЦИЯ 2 — ПО СТИЛЮ
-──────────────────────
+────────────────────
+🎨 ФУНКЦИЯ 2 — ПО СТИЛЮ (/style)
+────────────────────
 1. Напиши /style
 2. Пришли фото своих трусов
-3. Выбери стиль: 🌸 Нежный или 🌑 Тёмный
-4. Получи 5 изображений в этом стиле
+3. Выбери стиль: 🌸 Нежный / 🌑 Тёмный / 💎 Rich / 🎲 Смешанное
+4. Получи 3 изображения в этом стиле
 
-──────────────────────
+────────────────────
+✏️ ФУНКЦИЯ 3 — ОПИСАТЬ СТИЛЬ (/describe)
+────────────────────
+1. Напиши /describe
+2. Опиши желаемый стиль съёмки словами
+3. Я составлю промпт по твоему описанию
+4. Пришли фото своих трусов → получи изображение
+
+────────────────────
+🎁 ДОП. ЭЛЕМЕНТЫ
+────────────────────
+После каждой загрузки фото трусов бот предложит добавить в кадр:
+📇 Визитку · 📖 Журнал INTIMNO · или любой реквизит своими словами / фото
+
+────────────────────
+📎 ФОРМАТЫ
+────────────────────
+Принимаю: фото из галереи или файл (PNG, JPG, JPEG, WEBP)
+Отдаю: PNG-файл в полном качестве
+
+────────────────────
 ⚠️ ВАЖНО
-──────────────────────
+────────────────────
 — Без фото трусов генерация не запустится
-— Фото должно быть чётким, хорошего качества
 — Если что-то пошло не так → /cancel и начни заново
 
-Остались вопросы? Пиши @oreobra — расскажу всё подробно 🙂
+По всем вопросам: @oreobra 🙂
 ```
 
 ---
 
-### Сообщение: изображение не прислано
+### Меню выбора стиля
 ```
-⚠️ Для генерации нужно фото твоих трусов.
+Выбери стиль (3 изображения):
 
-Пожалуйста, пришли изображение — я не могу запустить генерацию без исходника. 
-Именно твои трусы будут основой кадра.
+🌸 Нежный — пастельные тона, мягкий свет, цветы, романтика
+🌑 Тёмный — тёмные фоны, контрастный свет, luxury-атмосфера
+💎 Rich — белый шёлк, золото, бархат, журнал INTIMNO
+🎲 Смешанное — разные стили, неожиданные сочетания
+
+[🌸 Нежный]  [🌑 Тёмный]
+[💎 Rich]    [🎲 Смешанное]
 ```
 
 ---
 
-### Сообщение: ожидание генерации
+### Меню доп. элементов
+```
+🎁 Хочешь добавить что-то в кадр?
+
+📇 Визитка — маленькая визитка с брендом INTIMNO
+📖 Журнал INTIMNO — журнал с названием бренда
+✏️ Описать — любой реквизит своими словами
+🖼 Прислать фото — пришли фото реквизита
+
+Или нажми «Без добавок» — и я сразу запущу генерацию.
+
+[📇 Визитка]         [📖 Журнал INTIMNO]
+[✏️ Описать словами] [🖼 Прислать фото]
+[✅ Без добавок — генерировать]
+```
+
+---
+
+### Ожидание генерации
 ```
 ⏳ Отправляю в NanaBanana Pro, жди немного...
 Обычно занимает 30–60 секунд.
@@ -154,36 +261,26 @@
 
 ---
 
-### Сообщение: выбор стиля
+### Ошибка цензуры
 ```
-Выбери стиль:
+🚫 Изображение не прошло через фильтры NanaBanana Pro — сервис его не пропустил.
 
-🌸 Нежный — пастельные тона, мягкий свет, цветы, романтика
-🌑 Тёмный — тёмные фоны, контрастный свет, luxury-атмосфера
-
-[🌸 Нежный]    [🌑 Тёмный]
+Попробуй с другим фото или напиши @oreobra
 ```
 
 ---
 
-### Сообщение: результат готов
-```
-✅ Готово! Вот твоё изображение:
-[изображение]
+## 6. СТИЛИ И ПРОМПТЫ
 
-Хочешь ещё? Используй /reference или /style
-```
+Все промпты: формат 3:4 вертикальный, без людей, только product/flatlay, на выходе PNG 1K.
 
 ---
 
-## 6. ПРОМПТЫ — СТИЛЬ 🌸 НЕЖНЫЙ
+### 🌸 НЕЖНЫЙ (3 промпта)
 
-Характер стиля: пастельные и нейтральные тона, мягкий рассеянный свет, утренняя атмосфера, цветы, сатин, нюдовые фоны, романтика, Instagram/Pinterest женская эстетика.
+Характер: пастельные тона, мягкий рассеянный свет, утренняя атмосфера, цветы, сатин, нюдовые фоны, романтика, Instagram/Pinterest женская эстетика.
 
----
-
-### Промпт Н-1 — Флетлэй на сатине с розами
-
+**Н-1 — Флетлэй на сатине с розами**
 ```
 A 3:4 vertical boudoir flatlay of women's panties from the attached image
 neatly arranged on pale milk satin background,
@@ -191,15 +288,12 @@ overhead 90-degree angle,
 soft diffused window light from behind and a subtle fill from the front,
 fresh roses and peonies arranged around,
 romantic feminine atmosphere, Instagram boudoir aesthetic,
-ultra-realistic 4K quality, very sharp focus so the fabric from the attached panties image 
+ultra-realistic 4K quality, very sharp focus so the fabric from the attached panties image
 looks extremely high quality and smooth.
 Shot on a Canon EOS R5 with a 50mm f/1.2 prime lens, tripod mounted, aperture around f/8, ISO 100.
 ```
 
----
-
-### Промпт Н-2 — Флетлэй на постели с розами и пионами
-
+**Н-2 — Флетлэй на постели с розами и пионами**
 ```
 A 3:4 vertical flatlay of women's panties from the attached image
 arranged in a light staircase pattern on crisp white bedding,
@@ -207,15 +301,12 @@ slightly above at 70 degrees camera angle,
 soft diffused window light from behind and a subtle fill from the front,
 a bouquet of fresh roses and peonies lightly scattered around,
 Pinterest romantic vibe, soft feminine atmosphere,
-ultra-realistic 4K quality, detailed texture so the fabric from the attached panties image 
+ultra-realistic 4K quality, detailed texture so the fabric from the attached panties image
 looks very high quality.
 Shot on a Canon EOS R5 with a 50mm f/1.2 prime lens, tripod mounted, aperture around f/8, ISO 100.
 ```
 
----
-
-### Промпт Н-3 — Флетлэй на постели, утренний свет
-
+**Н-3 — Флетлэй на постели, утренний свет**
 ```
 A 3:4 vertical lifestyle shot of women's panties from the attached image
 placed in the center on softly wrinkled white linen bedding,
@@ -223,54 +314,18 @@ camera at about 70 degrees for a semi-flatlay depth effect,
 soft morning window light from the right at 40 degrees,
 a small jewelry dish and tiny dried wildflowers nearby,
 dreamy boudoir Instagram vibe,
-ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image 
+ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image
 looks thick, soft and high quality.
 Shot on a Canon EOS R5 with a 50mm f/1.2 L lens at f/8, ISO 100.
 ```
 
 ---
 
-### Промпт Н-4 — Outdoor lifestyle, золотой час, дикие цветы
+### 🌑 ТЁМНЫЙ (3 промпта)
 
-```
-A 3:4 vertical lifestyle shot of women's panties from the attached image
-placed in the center on pale lightly textured surface,
-camera at about 60 degrees for a semi-flatlay depth effect,
-golden-hour sunlight from the top left at 35 degrees creating glowing highlights and long soft shadows,
-tiny dried wildflowers and baby's breath arranged around,
-warm Pinterest mood, romantic cottagecore Pinterest mood,
-ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image 
-looks thick, soft and high quality.
-Captured on a Sony A7 IV with an 85mm f/1.4 prime lens, aperture around f/4, ISO 100.
-```
+Характер: тёмные фоны (тёмно-серый, чёрный, уголь), свечи, парфюм, контрастный свет с рим-лайтом, драматика, luxury-атмосфера, вечерний свет.
 
----
-
-### Промпт Н-5 — Флетлэй с парфюмом на нюдовой ткани
-
-```
-A 3:4 vertical flatlay of women's panties from the attached image
-arranged in a soft staircase on flowing nude-colored fabric,
-camera at about 60 degrees for a semi-flatlay depth effect,
-warm diffused light from the top,
-a perfume bottle and a small jewelry dish for balance,
-Pinterest romantic vibe, soft feminine atmosphere,
-ultra-realistic 4K quality so the fabric from the attached panties image 
-looks very high-end and textured.
-Captured on a Sony A7 IV with an 85mm f/1.4 prime lens, aperture around f/4 
-for gentle background blur, ISO 100.
-```
-
----
-
-## 7. ПРОМПТЫ — СТИЛЬ 🌑 ТЁМНЫЙ
-
-Характер стиля: тёмные фоны (тёмно-серый, чёрный, уголь), свечи, парфюм, контрастный свет с рим-лайтом, драматика, luxury-атмосфера, вечерний свет.
-
----
-
-### Промпт Т-1 — Флетлэй на тёмном пушистом фоне
-
+**Т-1 — Флетлэй на тёмном пушистом фоне**
 ```
 A 3:4 vertical boudoir flatlay of women's panties from the attached image
 arranged in a tight fan on soft plush faux fur surface in dark grey tones,
@@ -278,15 +333,12 @@ overhead 90-degree angle,
 continuous softbox lighting from 45 degrees with dramatic shadows,
 a decorative candle with warm flame glow nearby,
 high-end editorial Instagram style, moody dark atmosphere,
-ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image 
+ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image
 looks premium and perfectly rendered.
 Shot on a Sony A7 IV with an 85mm f/1.4 prime lens, aperture around f/5.6, ISO 200.
 ```
 
----
-
-### Промпт Т-2 — Флетлэй, нюдовая ткань на тёмной поверхности, свеча
-
+**Т-2 — Нюдовая ткань на тёмной поверхности, свеча**
 ```
 A 3:4 vertical boudoir flatlay of women's panties from the attached image
 arranged in a diagonal row on silky nude fabric over a dark grey surface,
@@ -294,15 +346,12 @@ overhead 90-degree angle,
 warm evening light from a nearby lamp, soft dramatic shadows,
 a decorative black candle and a luxury perfume bottle placed beside,
 moody dark editorial Instagram aesthetic,
-ultra-realistic 4K quality with crisp edges and accurate color 
+ultra-realistic 4K quality with crisp edges and accurate color
 so the panties from the attached image look like premium designer lingerie.
 Shot on a Sony A7 IV with an 85mm f/1.4 prime lens, aperture around f/5.6, ISO 200.
 ```
 
----
-
-### Промпт Т-3 — Lifestyle с чёрным подносом и свечами
-
+**Т-3 — Lifestyle с чёрным подносом и свечами**
 ```
 A 3:4 vertical editorial lifestyle scene of women's panties from the attached image
 arranged in a cascading diagonal fan from top left to bottom right on matte black tray,
@@ -310,201 +359,235 @@ slightly above at 70 degrees camera angle,
 warm evening light, soft shadows from a nearby lamp,
 a perfume bottle and a decorative candle with a warm glowing flame,
 luxury dark editorial Instagram aesthetic,
-ultra-realistic 4K quality with crisp edges and accurate color 
+ultra-realistic 4K quality with crisp edges and accurate color
 so the panties from the attached image look like premium designer lingerie.
 Photographed on a Canon EOS R5 with a 50mm f/1.2 L lens at f/8, ISO 100.
 ```
 
 ---
 
-### Промпт Т-4 — Каталог, тёмная полированная поверхность, luxury
+### 💎 RICH (3 промпта)
 
+Характер: белый шёлк, мрамор, бархат, золотые аксессуары, жемчуг, журнал INTIMNO, роскошная editorial-эстетика, яркий дорогой свет.
+
+**R-1 — Белый шёлковый кимоно, золотой свет, журнал INTIMNO**
 ```
-A 3:4 vertical catalog-style product photo of women's panties from the attached image
-arranged in a loose fan on dark grey polished surface,
-slightly above at 70 degrees camera angle,
-studio color-calibrated lighting from 45 degrees with deep dramatic shadows,
-a small jewelry dish for balance,
-luxury e-commerce aesthetic, high-end editorial Instagram style,
-ultra-detailed 4K quality with precise rendering so the fabric from the attached panties image 
-looks premium and perfectly rendered.
-Photographed on a Canon EOS R5 with a 50mm f/1.2 L lens at f/8, ISO 100.
-```
-
----
-
-### Промпт Т-5 — Luxury product shot, тёмная поверхность
-
-```
-A 3:4 vertical high-contrast studio product shot of women's panties from the attached image
-placed in the center on dark grey polished surface,
-straight overhead angle,
-dramatic directional lighting from 45 degrees, deep shadow areas creating luxury depth and contrast,
-a luxury perfume bottle and a black decorative candle placed to the side,
-luxury beauty-campaign vibe, dark editorial Instagram aesthetic,
-ultra-realistic 4K quality with crisp edges and accurate color 
-so the panties from the attached image look like premium designer lingerie.
-Shot on a Sony A7 IV with an 85mm f/1.4 prime lens, aperture around f/5.6, ISO 200.
+A 3:4 vertical editorial flatlay of women's panties from the attached image,
+arranged in an elegant open fan directly on a white silk kimono
+with subtle delicate embroidery, the kimono fabric draped naturally
+filling the entire background with soft ivory folds,
+camera at about 75 degrees,
+bright golden sunlight from the top left at 35 degrees,
+warm glowing highlights running across the silk kimono surface
+and directly illuminating the fan of panties,
+crisp sun-kissed light with long soft shadows following the fabric folds,
+a thin gold chain necklace and small pearl earrings
+placed organically to the left of the fan,
+an open fashion magazine with the title INTIMNO on the cover
+placed to the right, slightly angled, pages naturally fanned,
+warm feminine Pinterest editorial aesthetic, bright and luxurious,
+ultra-realistic 4K quality so the fabric from the attached panties image
+looks flawless, premium and perfectly rendered,
+every texture detail sharp and true to the original garment.
+Shot on a Canon EOS R5 with a 50mm f/1.2 L lens at f/7.1, ISO 100,
+tripod mounted, color-calibrated studio-natural hybrid lighting.
 ```
 
----
-
-## 8. ИНСТРУКЦИЯ — СОЗДАНИЕ БОТА В ANTIGRAVITY С CLAUDE OPUS 4
-
-### Шаг 1 — Создай нового бота в Telegram
-
-1. Открой @BotFather в Telegram
-2. Напиши `/newbot`
-3. Придумай имя бота (например: `NanaBanana Studio`)
-4. Придумай юзернейм (например: `@nanabanana_studio_bot`)
-5. Сохрани выданный **API Token** — он понадобится при подключении в Antigravity
-
----
-
-### Шаг 2 — Создай проект в Antigravity
-
-1. Зайди в Antigravity и создай новый проект / агент
-2. Выбери Telegram как канал подключения
-3. Вставь токен от BotFather
-4. Выбери модель: **Claude Opus 4** (`claude-opus-4`)
-
----
-
-### Шаг 3 — Системный промпт для Claude Opus 4
-
-Вставь следующий текст как **System Prompt** агента:
-
+**R-2 — Белый мрамор, орхидеи, люкс-парфюм, жемчужный браслет**
 ```
-You are an assistant inside a Telegram bot that helps generate professional lingerie (panties) product images via NanaBanana Pro.
+A 3:4 vertical editorial flatlay of women's panties from the attached image
+arranged in a neat elegant fan on a cool white marble surface,
+camera at about 80 degrees,
+soft studio lighting from 45 degrees with subtle warm gold reflectors,
+a luxury glass perfume bottle with a gold cap
+and a delicate pearl bracelet placed organically beside the panties,
+a single spray of fresh white orchid blooms in the upper corner,
+high-end fashion editorial aesthetic, crisp and luminous,
+ultra-realistic 4K quality so the fabric from the attached panties image
+looks flawless, premium and perfectly rendered,
+every texture detail sharp and true to the original garment.
+Shot on a Canon EOS R5 with a 50mm f/1.2 L lens at f/8, ISO 100, tripod mounted.
+```
 
-Your role:
-1. Analyze reference images sent by users to understand shooting style, angle, lighting, mood, props, and background.
-2. Compose image generation prompts following the exact structure described below.
-3. Guide users step by step: ask for reference, create prompt, ask for panties image, trigger generation.
-4. Never trigger a generation without the panties source image — this is a strict rule.
-5. Always respond in the language the user writes in (Russian or English).
-
----
-
-PROMPT STRUCTURE — FLATLAY / PRODUCT SHOTS ONLY:
-A 3:4 vertical [shot type] of women's panties from the attached image
-[arrangement] on [surface/background], [camera angle],
-[lighting direction + type + angle], [props if needed],
-[mood/aesthetic],
-ultra-realistic 4K quality [fabric quality formula].
-[Camera settings if needed].
-
-RULES:
-- Format is always 3:4 vertical — never change this
-- All prompts are product/flatlay only — no model shots
-- Fabric quality formula is mandatory in every prompt
-- Prompts must be written in English
-- Always reference the panties image with "from the attached image"
-
----
-
-CONVERSATION FLOW FOR FUNCTION 1 (Reference):
-Step 1: User sends reference image → analyze it, compose prompt, show it to user
-Step 2: Ask user to send their panties image
-Step 3: Wait for panties image — do NOT generate without it
-Step 4: Trigger NanaBanana generation with [prompt + panties image]
-Step 5: Return result
-
-CONVERSATION FLOW FOR FUNCTION 2 (Style):
-Step 1: Ask user to send their panties image
-Step 2: Wait for panties image — do NOT show style menu without it
-Step 3: Show style menu: 🌸 Нежный / 🌑 Тёмный
-Step 4: Run all 5 prompts of chosen style with panties image through NanaBanana
-Step 5: Return 5 images
-
----
-
-ERROR HANDLING:
-- If user tries to choose style without sending panties image: "Сначала пришли фото трусов 🙏"
-- If user sends text when photo is expected: "Мне нужно изображение, не текст. Пришли фото, пожалуйста."
-- If generation fails: "Что-то пошло не так при генерации. Попробуй ещё раз или напиши @oreobra"
-
-CONTACT: For any questions users can't solve, direct them to @oreobra
+**R-3 — Слоновая кость, бархат, кристальная шпилька, золочёная книга**
+```
+A 3:4 vertical editorial lifestyle shot of women's panties from the attached image
+arranged in a cascading waterfall fold on ivory velvet fabric,
+camera at 70 degrees for a luxurious semi-flatlay perspective,
+warm champagne-toned directional lighting from top right at 40 degrees
+creating rich golden highlights and soft deep shadows in the velvet texture,
+a delicate crystal hair pin and a strand of pearls
+loosely draped across the bottom edge of the panties,
+an open hardcover book with a gold-embossed spine placed to the left,
+refined luxury boudoir aesthetic, warm ivory and gold tones,
+ultra-realistic 4K quality so the fabric from the attached panties image
+looks exceptionally premium and silky smooth,
+every texture detail sharp and true to the original garment.
+Shot on a Sony A7 IV with an 85mm f/1.4 prime lens at f/5.6, ISO 100.
 ```
 
 ---
 
-### Шаг 4 — Настройка команд бота
+### 🎲 СМЕШАННОЕ (3 промпта)
 
-В Antigravity добавь обработку следующих команд:
+Характер: неожиданные сочетания объектов, разные фактуры и атмосферы, каждый раз новый результат.
 
-| Команда | Действие |
-|---------|----------|
-| `/start` | Отправить приветственное сообщение (текст из раздела 5) |
-| `/help` | Отправить подробную инструкцию (текст из раздела 5) |
-| `/reference` | Установить состояние: ожидание референс-изображения |
-| `/style` | Установить состояние: ожидание изображения трусов → затем показ меню стилей |
-| `/styles` | Отправить описание двух стилей |
-| `/cancel` | Сбросить текущее состояние, отправить: «Отменено. Начни заново: /reference или /style» |
-
----
-
-### Шаг 5 — Подключение NanaBanana Pro
-
-1. Получи API ключ NanaBanana Pro
-2. В Antigravity добавь **Action/Tool** типа «HTTP Request» или «API Call»
-3. Настрой вызов:
-   - URL: `[NanaBanana API endpoint]`
-   - Method: POST
-   - Body: `{ "prompt": "[текст промпта]", "image": "[base64 или URL изображения трусов]" }`
-4. На выходе Action возвращает URL или base64 сгенерированного изображения
-5. Это изображение бот отправляет пользователю через Telegram
-
-> 📌 Уточни у NanaBanana Pro их актуальную документацию по API — endpoint и формат тела запроса могут отличаться.
-
----
-
-### Шаг 6 — Хранение промптов стилей
-
-В Antigravity создай **Knowledge Base** или **Variables** с двумя наборами промптов:
-
-**Переменная: `STYLE_SOFT`** — массив из 5 промптов стиля 🌸 Нежный (промпты Н-1 … Н-5 из раздела 6)
-
-**Переменная: `STYLE_DARK`** — массив из 5 промптов стиля 🌑 Тёмный (промпты Т-1 … Т-5 из раздела 7)
-
-При запуске Функции 2 бот итерирует по массиву выбранного стиля и для каждого промпта делает отдельный вызов к NanaBanana.
-
----
-
-### Шаг 7 — Управление состояниями (State Machine)
-
-Бот должен отслеживать, на каком шаге находится пользователь:
-
+**М-1 — Белый сатин, ноты, ромашки, флакон крема**
 ```
-state: idle          → ждёт команду
-state: ref_waiting   → ждёт референс-изображение (Функция 1)
-state: panties_f1    → ждёт изображение трусов (Функция 1, после получения промпта)
-state: panties_f2    → ждёт изображение трусов (Функция 2)
-state: style_choice  → показано меню стилей, ждёт выбор
-state: generating    → идёт генерация, блокирует новые запросы
+A 3:4 vertical Pinterest-style product photo of women's panties from the attached image
+lying on soft white satin fabric,
+shot in bright natural daytime light from a nearby window,
+ultra-realistic 4K quality as if taken with a professional camera,
+with a partially visible music score book in the top left corner
+and a dark brown body cream tube with a white label resting on the book,
+a bouquet of daisies placed in the upper right corner,
+the panties from the attached image positioned in the center as the main focus
+with very high-quality fabric rendering,
+and a barely visible necklace in the lower left corner gently exiting the frame,
+no text in the scene, Instagram aesthetic.
 ```
 
-При каждом состоянии бот должен корректно реагировать на неожиданный ввод:
-- Получил текст, когда ждёт фото → просит прислать фото
-- Получил фото, когда ждёт текст/выбор → уточняет, что именно нужно сделать
+**М-2 — Серый диван, вид сверху, утренний свет**
+```
+A 3:4 vertical ultra-realistic 4K product photo for a marketplace:
+women's panties from the attached image are laid out like a small staircase
+on a large soft modern gray sofa,
+high-end minimalist interior,
+shot from a perfectly straight top-down camera angle,
+with a stripe of gentle morning sunlight falling across part of the sofa and panties,
+creating soft shadows and a cozy atmosphere,
+professional photoshoot look,
+very detailed rendering so the fabric from the attached panties image
+appears extremely high quality,
+no text in the scene.
+```
+
+**М-3 — Серый искусственный мех, свеча, белая книга**
+```
+A 3:4 vertical ultra-realistic 4K product photo:
+women's panties from the attached image arranged in an overlapping fan
+on a fluffy grey faux-fur blanket lying on white bedding,
+top-down angle,
+a lit candle in a black jar and a white book edge sit top-right,
+warm cozy lighting,
+highly detailed fabric rendering,
+no text in the scene.
+```
 
 ---
 
-## 9. ТЕСТОВЫЙ СЦЕНАРИЙ (ЧЕК-ЛИСТ)
+## 7. ТЕХНИЧЕСКИЙ СТЕК
 
-Перед запуском проверь:
+| Компонент | Технология |
+|-----------|-----------|
+| Язык | Python 3.11+ |
+| Telegram framework | aiogram 3.x (async, FSM) |
+| Генерация изображений | `google/nano-banana-pro` via Replicate API |
+| Анализ изображений / промпты | `anthropic/claude-4-sonnet` via Replicate API |
+| HTTP-клиент | aiohttp |
+| Управление состояниями | aiogram MemoryStorage (FSM) |
+| Конфигурация | python-dotenv |
 
-- [ ] `/start` работает и выводит приветствие
-- [ ] `/help` выводит подробную инструкцию
-- [ ] Функция 1: бот не генерирует без изображения трусов
-- [ ] Функция 1: бот корректно анализирует референс и составляет промпт
-- [ ] Функция 1: генерация запускается после получения изображения трусов
-- [ ] Функция 2: меню стилей не появляется без изображения трусов
-- [ ] Функция 2: при выборе стиля генерируются все 5 изображений
-- [ ] При ошибке генерации бот пишет сообщение об ошибке с контактом @oreobra
-- [ ] `/cancel` корректно сбрасывает состояние
-- [ ] Все промпты переданы в NanaBanana вместе с изображением трусов
+### Параметры NanaBanana Pro
+
+| Параметр | Значение |
+|----------|----------|
+| `aspect_ratio` | `3:4` |
+| `resolution` | `1K` |
+| `output_format` | `png` |
+| `safety_filter_level` | `block_only_high` |
+| `image_input` | массив с фото трусов (и опционально доп. фото) |
 
 ---
 
-*Документ подготовлен: апрель 2026*
+## 8. СТРУКТУРА ПРОЕКТА
+
+```
+bot-for-images/
+├── bot.py          # Хэндлеры, FSM, запуск
+├── config.py       # Переменные окружения
+├── states.py       # Состояния FSM
+├── prompts.py      # 4 стиля × 3 промпта
+├── services.py     # Вызовы Replicate API
+├── .env            # Секреты (не коммитить)
+├── .env.example    # Шаблон переменных
+├── requirements.txt
+└── README.md
+```
+
+### Машина состояний (State Machine)
+
+```
+ReferenceFlow:
+  waiting_reference   → ждёт референс-фото
+  waiting_panties     → ждёт фото трусов
+  choosing_extras     → показано меню доп. элементов
+  waiting_extras_text → ждёт текстовое описание реквизита
+  waiting_extras_image → ждёт фото реквизита
+
+StyleFlow:
+  waiting_panties     → ждёт фото трусов
+  choosing_style      → показано меню стилей
+  choosing_extras     → показано меню доп. элементов
+  waiting_extras_text
+  waiting_extras_image
+
+DescribeFlow:
+  waiting_description → ждёт текстовое описание стиля
+  waiting_panties     → ждёт фото трусов
+  choosing_extras     → показано меню доп. элементов
+  waiting_extras_text
+  waiting_extras_image
+```
+
+---
+
+## 9. ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ
+
+```env
+TELEGRAM_TOKEN=токен_от_BotFather
+REPLICATE_API_TOKEN=токен_от_replicate.com
+```
+
+---
+
+## 10. ЗАПУСК
+
+```bash
+# Установить зависимости
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Заполнить .env и запустить
+python bot.py
+```
+
+---
+
+## 11. ТЕСТОВЫЙ ЧЕК-ЛИСТ
+
+- [ ] `/start` выводит приветствие со списком команд
+- [ ] `/help` выводит подробную инструкцию со всеми 3 функциями и 4 стилями
+- [ ] `/styles` описывает все 4 стиля
+- [ ] **Функция 1:** бот не генерирует без фото трусов
+- [ ] **Функция 1:** Claude корректно анализирует референс и составляет 2 промпта
+- [ ] **Функция 1:** после фото трусов появляется меню доп. элементов
+- [ ] **Функция 1:** генерируются 2 PNG-файла
+- [ ] **Функция 2:** меню стилей не появляется без фото трусов
+- [ ] **Функция 2:** все 4 стиля доступны в меню
+- [ ] **Функция 2:** при выборе стиля генерируются 3 PNG-файла
+- [ ] **Функция 3:** Claude корректно составляет промпт по текстовому описанию
+- [ ] **Функция 3:** генерируется 1 PNG-файл
+- [ ] **Доп. элементы:** визитка добавляется к промпту
+- [ ] **Доп. элементы:** журнал INTIMNO добавляется к промпту
+- [ ] **Доп. элементы:** текстовое описание реквизита добавляется к промпту
+- [ ] **Доп. элементы:** фото реквизита анализируется Claude и добавляется к промпту
+- [ ] Изображения отдаются как PNG-файлы (не сжатые фото)
+- [ ] При ошибке цензуры NanaBanana бот пишет соответствующее сообщение
+- [ ] `/cancel` сбрасывает любое состояние
+- [ ] Бот принимает изображения как из галереи, так и файлом (PNG, JPG, JPEG, WEBP)
+
+---
+
+*Документ обновлён: апрель 2026*
