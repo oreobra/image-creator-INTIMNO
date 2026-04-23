@@ -32,7 +32,7 @@ from states import DescribeFlow, ReferenceFlow, StyleFlow
 
 START_TEXT = """Привет! 👋
 
-Я генерирую профессиональные фото белья с помощью NanaBanana Pro.
+Я генерирую профессиональные фото белья с помощью Nanobanana Pro.
 
 📋 Доступные команды:
 /reference — по референсу
@@ -107,10 +107,10 @@ NO_PHOTO_TEXT = """⚠️ Для генерации нужно фото твои
 Пришли изображение — фото из галереи или файл (PNG, JPG, JPEG).
 Именно твои трусы будут основой кадра."""
 
-WAITING_TEXT = "⏳ Отправляю в NanaBanana Pro, жди немного...\nОбычно занимает 30–60 секунд."
+WAITING_TEXT = "⏳ Генерирую изображение, жди немного...\nОбычно занимает 30–60 секунд."
 
 CENSORED_TEXT = (
-    "🚫 Изображение не прошло через фильтры NanaBanana Pro — сервис его не пропустил.\n\n"
+    "🚫 Изображение не прошло через фильтры — сервис его не пропустил.\n\n"
     "Попробуй с другим фото или напиши @oreobra"
 )
 
@@ -279,7 +279,7 @@ async def run_generation(
         for idx, result in enumerate(results, start=1):
             if isinstance(result, services.CensorshipError):
                 await target.answer(
-                    f"🚫 Вариант {idx}/{total}: не прошло фильтры NanaBanana Pro."
+                    f"🚫 Вариант {idx}/{total}: не прошло фильтры — сервис его не пропустил."
                 )
             elif isinstance(result, Exception):
                 logging.error("Generation %d/%d failed: %s", idx, total, result)
@@ -779,7 +779,7 @@ async def main() -> None:
     register_handlers(dp)
 
     await set_commands(bot)
-    logging.info("NanaBanana bot starting…")
+    logging.info("Bot starting…")
     await dp.start_polling(bot, skip_updates=True)
 
 
