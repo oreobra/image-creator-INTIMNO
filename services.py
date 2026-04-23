@@ -137,6 +137,74 @@ async def describe_to_prompt(description: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────
+#  Style blueprint → 3 fresh prompts
+# ──────────────────────────────────────────────────────────
+
+_STYLE_SYSTEM = """You generate product photography prompts for women's lingerie (panties).
+
+Given a style description with suggested surfaces, props, and mood, compose EXACTLY 3 meaningfully different prompts.
+Each prompt must follow this EXACT structure:
+
+A 3:4 vertical [shot type] of women's panties from the attached image
+[arrangement] on [surface/background], [camera angle],
+[lighting direction + type + angle], [props],
+[mood/aesthetic],
+ultra-realistic 4K quality, very sharp focus so the fabric from the attached panties image looks extremely high quality and smooth.
+[Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200]
+
+RULES:
+- 3:4 vertical only
+- Product/flatlay only — NO people
+- English only
+- Always use "from the attached image" when referring to panties
+- Each of the 3 prompts MUST use DIFFERENT surfaces, props, and arrangements
+- Vary the camera angle between prompts
+- Stay within the style's mood and aesthetic
+
+Return EXACTLY this format — nothing else:
+PROMPT 1:
+[first prompt]
+
+PROMPT 2:
+[second prompt]
+
+PROMPT 3:
+[third prompt]"""
+
+
+def _generate_style_prompts_sync(style_description: str) -> list[str]:
+    text = _replicate_run(
+        config.ANALYSIS_MODEL,
+        {
+            "system_prompt": _STYLE_SYSTEM,
+            "prompt": f"Generate 3 product photography prompts for this style:\n\n{style_description}",
+            "max_tokens": 2048,
+            "extended_thinking": False,
+        },
+    )
+
+    prompts = []
+    for i in range(1, 4):
+        marker = f"PROMPT {i}:"
+        next_marker = f"PROMPT {i + 1}:" if i < 3 else None
+        if marker in text:
+            start = text.index(marker) + len(marker)
+            end = text.index(next_marker) if next_marker and next_marker in text else len(text)
+            prompts.append(text[start:end].strip())
+
+    if len(prompts) < 3:
+        parts = [p.strip() for p in text.split("\n\n") if p.strip() and not p.strip().startswith("PROMPT")]
+        prompts = parts[:3] if len(parts) >= 3 else [text.strip()] * 3
+
+    return prompts[:3]
+
+
+async def generate_style_prompts(style_description: str) -> list[str]:
+    """Generate 3 fresh product photography prompts from a style blueprint."""
+    return await asyncio.to_thread(_generate_style_prompts_sync, style_description)
+
+
+# ──────────────────────────────────────────────────────────
 #  Extras image analysis — short description for prompt
 # ──────────────────────────────────────────────────────────
 

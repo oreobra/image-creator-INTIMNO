@@ -18,12 +18,7 @@ from aiogram.types import (
 
 import config
 import services
-from prompts import (
-    STYLE_DARK_PROMPTS,
-    STYLE_MIXED_PROMPTS,
-    STYLE_RICH_PROMPTS,
-    STYLE_SOFT_PROMPTS,
-)
+from prompts import STYLE_BLUEPRINTS
 from states import DescribeFlow, ReferenceFlow, StyleFlow
 
 # ──────────────────────────────────────────────────────────
@@ -444,7 +439,7 @@ async def style_got_panties(message: Message, state: FSMContext) -> None:
 
 
 async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: user tapped 🌸 Нежный or 🌑 Тёмный."""
+    """Callback: user tapped a style button."""
     current = await state.get_state()
     if current != StyleFlow.choosing_style:
         await callback.answer("Сначала пришли фото трусов через /style", show_alert=True)
@@ -457,22 +452,32 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         return
 
-    _prompts_map = {
-        "style_soft":  (STYLE_SOFT_PROMPTS,  "🌸 Нежный"),
-        "style_dark":  (STYLE_DARK_PROMPTS,  "🌑 Тёмный"),
-        "style_rich":  (STYLE_RICH_PROMPTS,  "💎 Rich"),
-        "style_mixed": (STYLE_MIXED_PROMPTS, "🎲 Смешанное"),
-    }
-    prompts, style_name = _prompts_map[callback.data]
+    style_info = STYLE_BLUEPRINTS.get(callback.data)
+    if not style_info:
+        await callback.answer("Неизвестный стиль", show_alert=True)
+        return
+
+    style_name = style_info["name"]
+    style_description = style_info["description"]
+
+    await callback.message.edit_text(f"✅ Стиль выбран: {style_name}\n\n⏳ Подбираю идеи для съёмки...")
+    await callback.answer()
+
+    try:
+        prompts = await services.generate_style_prompts(style_description)
+    except Exception as exc:
+        logging.error("Style prompt generation failed: %s", exc)
+        await callback.message.edit_text("❌ Не удалось подобрать стиль. Попробуй ещё раз /style")
+        await state.clear()
+        return
 
     await callback.message.edit_text(f"✅ Стиль выбран: {style_name}")
-    await callback.answer()
 
     await show_extras_menu(
         callback.message, state,
         flow="style",
         panties_file_id=panties_file_id,
-        prompts=list(prompts),
+        prompts=prompts,
         style_name=style_name,
     )
 
