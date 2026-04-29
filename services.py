@@ -65,7 +65,9 @@ VARIANT 1:
 VARIANT 2:
 [second prompt]
 
-RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. Always "from the attached image"."""
+RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. Always "from the attached image".
+- Show EXACTLY ONE pair of panties — never duplicate or add extra pairs
+- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way"""
 
 
 def _analyze_double_sync(image_bytes: bytes) -> tuple[str, str]:
@@ -116,6 +118,8 @@ ultra-realistic 4K quality, very sharp focus so the fabric from the attached pan
 [Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200]
 
 RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. "from the attached image" for panties.
+- Show EXACTLY ONE pair of panties — never duplicate or add extra pairs
+- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way
 Return ONLY the prompt, no explanation, no preamble."""
 
 
@@ -160,6 +164,8 @@ RULES:
 - Each of the 3 prompts MUST use DIFFERENT surfaces, props, and arrangements
 - Vary the camera angle between prompts
 - Stay within the style's mood and aesthetic
+- Show EXACTLY ONE pair of panties — never duplicate or add extra pairs
+- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way
 
 Return EXACTLY this format — nothing else:
 PROMPT 1:
