@@ -251,7 +251,7 @@ _CENSORSHIP_KEYWORDS = [
 ]
 
 
-def _generate_sync(prompt: str, panties_image_bytes: bytes) -> str | None:
+def _generate_sync(prompt: str, panties_images_bytes: list[bytes]) -> str | None:
     """
     Call NanaBanana Pro on Replicate.
     Always 3:4 portrait, 1K resolution, PNG output.
@@ -261,7 +261,7 @@ def _generate_sync(prompt: str, panties_image_bytes: bytes) -> str | None:
         config.GENERATION_MODEL,
         input={
             "prompt": prompt,
-            "image_input": [io.BytesIO(panties_image_bytes)],
+            "image_input": [io.BytesIO(b) for b in panties_images_bytes],
             "aspect_ratio": "3:4",
             "resolution": "1K",
             "output_format": "png",
@@ -274,13 +274,13 @@ def _generate_sync(prompt: str, panties_image_bytes: bytes) -> str | None:
     return str(output) if output else None
 
 
-async def generate_image(prompt: str, panties_image_bytes: bytes) -> str | None:
+async def generate_image(prompt: str, panties_images_bytes: list[bytes]) -> str | None:
     """
     Generate one image via NanaBanana Pro.
     Raises CensorshipError if content filters reject the image.
     """
     try:
-        return await asyncio.to_thread(_generate_sync, prompt, panties_image_bytes)
+        return await asyncio.to_thread(_generate_sync, prompt, panties_images_bytes)
     except Exception as exc:
         error_lower = str(exc).lower()
         if any(kw in error_lower for kw in _CENSORSHIP_KEYWORDS):

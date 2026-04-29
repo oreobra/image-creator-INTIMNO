@@ -150,6 +150,12 @@ STYLE_KEYBOARD = InlineKeyboardMarkup(
     ]
 )
 
+PANTIES_READY_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Готово — продолжить", callback_data="panties_ready"),
+    ]]
+)
+
 EXTRAS_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
         [
@@ -215,13 +221,13 @@ async def show_extras_menu(
     message: Message,
     state: FSMContext,
     flow: str,
-    panties_file_id: str,
+    panties_file_ids: list[str],
     prompts: list[str],
     style_name: str = "",
 ) -> None:
     """
     Save generation data to state and show the extras selection menu.
-    Called after panties photo is received in any flow.
+    Called after panties photos are confirmed in any flow.
     """
     _extras_state = {
         "reference": ReferenceFlow.choosing_extras,
@@ -230,7 +236,7 @@ async def show_extras_menu(
     }
     await state.update_data(
         flow=flow,
-        panties_file_id=panties_file_id,
+        panties_file_ids=panties_file_ids,
         prompts=prompts,
         style_name=style_name,
     )
@@ -249,7 +255,7 @@ async def run_generation(
     runs all prompts in parallel, and sends results as PNG files.
     """
     data = await state.get_data()
-    panties_file_id: str = data["panties_file_id"]
+    panties_file_ids: list[str] = data["panties_file_ids"]
     base_prompts: list[str] = data["prompts"]
     style_name: str = data.get("style_name", "")
     total = len(base_prompts)
@@ -264,8 +270,10 @@ async def run_generation(
     )
 
     try:
-        panties_bytes = await download_telegram_file(bot, panties_file_id)
-        tasks = [services.generate_image(p, panties_bytes) for p in prompts]
+        panties_bytes_list = await asyncio.gather(
+            *[download_telegram_file(bot, fid) for fid in panties_file_ids]
+        )
+        tasks = [services.generate_image(p, list(panties_bytes_list)) for p in prompts]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         await gen_msg.delete()
@@ -348,7 +356,7 @@ async def cmd_style(message: Message, state: FSMContext) -> None:
     await state.set_state(StyleFlow.waiting_panties)
     await message.answer(
         "🎨 Пришли фото своих трусов — и я предложу выбрать стиль.\n\n"
-        "Можно фото из галереи или файлом (PNG, JPG, JPEG)."
+        "Можно одно фото или несколько — когда загрузишь все, нажми Готово."
     )
 
 
@@ -388,8 +396,8 @@ async def ref_got_reference(message: Message, state: FSMContext) -> None:
             f"✅ Промпты по твоему референсу:\n\n"
             f"<b>Вариант 1:</b>\n<code>{p1}</code>\n\n"
             f"<b>Вариант 2:</b>\n<code>{p2}</code>\n\n"
-            "Теперь пришли фото своих трусов — запущу оба варианта.\n"
-            "Можно фото из галереи или файлом.",
+            "Теперь пришли фото своих трусов.\n"
+            "Можно одно фото или несколько — когда загрузишь все, нажми Готово.",
             parse_mode="HTML",
         )
         await state.update_data(prompts=[p1, p2], style_name="")
@@ -402,8 +410,15 @@ async def ref_got_reference(message: Message, state: FSMContext) -> None:
         await state.clear()
 
 
-async def ref_got_panties(message: Message, state: FSMContext) -> None:
-    """State: waiting_panties (Function 1) — user sent panties image."""
+_WAITING_PANTIES_STATES = StateFilter(
+    ReferenceFlow.waiting_panties,
+    StyleFlow.waiting_panties,
+    DescribeFlow.waiting_panties,
+)
+
+
+async def got_panties_photo(message: Message, state: FSMContext) -> None:
+    """Shared handler: user sends a panties photo in any waiting_panties state."""
     file_id = get_image_file_id(message)
     if not file_id:
         await message.answer(
@@ -413,30 +428,59 @@ async def ref_got_panties(message: Message, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
-    prompts = data.get("prompts", [])
-    if not prompts:
-        await message.answer("Что-то пошло не так. Начни заново: /reference")
-        await state.clear()
+    file_ids: list[str] = data.get("panties_file_ids", [])
+    file_ids = file_ids + [file_id]
+    await state.update_data(panties_file_ids=file_ids)
+
+    count = len(file_ids)
+    text = (
+        "✅ Фото добавлено! Пришли ещё или нажми Готово."
+        if count == 1
+        else f"✅ Добавлено фото: {count}. Пришли ещё или нажми Готово."
+    )
+    await message.answer(text, reply_markup=PANTIES_READY_KEYBOARD)
+
+
+async def panties_ready(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: user tapped «Готово» after uploading panties photos."""
+    data = await state.get_data()
+    file_ids: list[str] = data.get("panties_file_ids", [])
+
+    if not file_ids:
+        await callback.answer("Сначала пришли хотя бы одно фото трусов 🙏", show_alert=True)
         return
 
-    await show_extras_menu(message, state, "reference", file_id, prompts, style_name="")
+    await callback.answer()
+    await callback.message.edit_text(
+        f"✅ {'Фото' if len(file_ids) == 1 else f'{len(file_ids)} фото'} трусов получено!"
+    )
+
+    current = await state.get_state()
+
+    if current == ReferenceFlow.waiting_panties:
+        prompts = data.get("prompts", [])
+        if not prompts:
+            await callback.message.answer("Что-то пошло не так. Начни заново: /reference")
+            await state.clear()
+            return
+        await show_extras_menu(callback.message, state, "reference", file_ids, prompts, style_name="")
+
+    elif current == StyleFlow.waiting_panties:
+        await state.set_state(StyleFlow.choosing_style)
+        await callback.message.answer(STYLE_MENU_TEXT, reply_markup=STYLE_KEYBOARD)
+
+    elif current == DescribeFlow.waiting_panties:
+        prompts = data.get("prompts", [])
+        if not prompts:
+            await callback.message.answer("Что-то пошло не так. Начни заново: /describe")
+            await state.clear()
+            return
+        await show_extras_menu(callback.message, state, "describe", file_ids, prompts, style_name="")
 
 
 # ──────────────────────────────────────────────────────────
 #  Function 2 — Style flow
 # ──────────────────────────────────────────────────────────
-
-async def style_got_panties(message: Message, state: FSMContext) -> None:
-    """State: waiting_panties (Function 2) — user sent panties image."""
-    file_id = get_image_file_id(message)
-    if not file_id:
-        await message.answer(NO_PHOTO_TEXT)
-        return
-
-    await state.update_data(panties_file_id=file_id)
-    await state.set_state(StyleFlow.choosing_style)
-    await message.answer(STYLE_MENU_TEXT, reply_markup=STYLE_KEYBOARD)
-
 
 async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
     """Callback: user tapped a style button."""
@@ -446,8 +490,8 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     data = await state.get_data()
-    panties_file_id = data.get("panties_file_id")
-    if not panties_file_id:
+    panties_file_ids = data.get("panties_file_ids")
+    if not panties_file_ids:
         await callback.answer("Сначала пришли фото трусов 🙏", show_alert=True)
         await state.clear()
         return
@@ -476,7 +520,7 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
     await show_extras_menu(
         callback.message, state,
         flow="style",
-        panties_file_id=panties_file_id,
+        panties_file_ids=panties_file_ids,
         prompts=prompts,
         style_name=style_name,
     )
@@ -500,8 +544,8 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
         await analyzing_msg.delete()
         await message.answer(
             f"✅ Промпт по твоему описанию:\n\n<code>{prompt}</code>\n\n"
-            "Теперь пришли фото своих трусов — и я запущу генерацию.\n"
-            "Можно фото из галереи или файлом.",
+            "Теперь пришли фото своих трусов.\n"
+            "Можно одно фото или несколько — когда загрузишь все, нажми Готово.",
             parse_mode="HTML",
         )
         await state.update_data(prompts=[prompt], style_name="")
@@ -512,26 +556,6 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
         await analyzing_msg.delete()
         await message.answer(ERROR_TEXT)
         await state.clear()
-
-
-async def describe_got_panties(message: Message, state: FSMContext) -> None:
-    """State: waiting_panties (Function 3) — user sent panties image."""
-    file_id = get_image_file_id(message)
-    if not file_id:
-        await message.answer(
-            "Мне нужно фото трусов.\n"
-            "Пришли фото из галереи или файл (PNG, JPG, JPEG)."
-        )
-        return
-
-    data = await state.get_data()
-    prompts = data.get("prompts", [])
-    if not prompts:
-        await message.answer("Что-то пошло не так. Начни заново: /describe")
-        await state.clear()
-        return
-
-    await show_extras_menu(message, state, "describe", file_id, prompts, style_name="")
 
 
 # ──────────────────────────────────────────────────────────
@@ -736,12 +760,13 @@ def register_handlers(dp: Dispatcher) -> None:
     # ── Function 1 — Reference flow ───────────────────────
     dp.message.register(ref_got_reference, ReferenceFlow.waiting_reference, _IMAGE_FILTER)
     dp.message.register(ref_got_reference, ReferenceFlow.waiting_reference)
-    dp.message.register(ref_got_panties,   ReferenceFlow.waiting_panties,   _IMAGE_FILTER)
-    dp.message.register(ref_got_panties,   ReferenceFlow.waiting_panties)
+
+    # ── Panties upload — shared across all flows ──────────
+    dp.message.register(got_panties_photo, _WAITING_PANTIES_STATES, _IMAGE_FILTER)
+    dp.message.register(got_panties_photo, _WAITING_PANTIES_STATES)
+    dp.callback_query.register(panties_ready, F.data == "panties_ready", _WAITING_PANTIES_STATES)
 
     # ── Function 2 — Style flow ────────────────────────────
-    dp.message.register(style_got_panties, StyleFlow.waiting_panties, _IMAGE_FILTER)
-    dp.message.register(style_got_panties, StyleFlow.waiting_panties)
     dp.callback_query.register(
         style_chosen,
         F.data.in_({"style_soft", "style_dark", "style_rich", "style_mixed"}),
@@ -750,8 +775,6 @@ def register_handlers(dp: Dispatcher) -> None:
     # ── Function 3 — Describe flow ─────────────────────────
     dp.message.register(describe_got_description, DescribeFlow.waiting_description, F.text)
     dp.message.register(describe_unexpected_image, DescribeFlow.waiting_description, _IMAGE_FILTER)
-    dp.message.register(describe_got_panties, DescribeFlow.waiting_panties, _IMAGE_FILTER)
-    dp.message.register(describe_got_panties, DescribeFlow.waiting_panties)
 
     # ── Extras (shared across all flows) ──────────────────
     dp.callback_query.register(
