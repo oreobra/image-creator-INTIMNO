@@ -787,6 +787,12 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(extras_image_got_text, _EXTRAS_IMAGE_STATES, F.text)
     dp.message.register(extras_unexpected, _CHOOSING_EXTRAS_STATES)
 
+    # ── Stale "Готово" button pressed outside waiting_panties state ──
+    dp.callback_query.register(
+        lambda cb: cb.answer(),
+        F.data == "panties_ready",
+    )
+
     # ── Fallbacks (must come last) ─────────────────────────
     dp.message.register(fallback_unexpected_image, _IMAGE_FILTER)
     dp.message.register(fallback_unexpected_text)
