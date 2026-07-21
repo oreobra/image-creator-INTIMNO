@@ -64,7 +64,7 @@ def _analyze_panties_sync(image_bytes: bytes) -> str:
             "system_prompt": _PANTIES_ANALYSIS_SYSTEM,
             "prompt": "Analyze the material, color and styling fit of these panties.",
             "image": io.BytesIO(image_bytes),
-            "max_tokens": 300,
+            "max_tokens": 1024,
             "extended_thinking": False,
         },
     )
@@ -226,7 +226,7 @@ def _analyze_extras_sync(image_bytes: bytes) -> str:
             "system_prompt": _EXTRAS_IMAGE_SYSTEM,
             "prompt": "Describe this object briefly.",
             "image": io.BytesIO(image_bytes),
-            "max_tokens": 60,
+            "max_tokens": 1024,
             "extended_thinking": False,
         },
     )
@@ -261,7 +261,7 @@ def _summarize_feedback_sync(feedback_text: str) -> str:
         {
             "system_prompt": _FEEDBACK_SUMMARY_SYSTEM,
             "prompt": feedback_text,
-            "max_tokens": 100,
+            "max_tokens": 1024,
             "extended_thinking": False,
         },
     )
