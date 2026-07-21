@@ -10,6 +10,10 @@ REPLICATE_API_TOKEN: str = os.getenv("REPLICATE_API_TOKEN", "")
 ANALYSIS_MODEL = "anthropic/claude-4-sonnet"
 GENERATION_MODEL = "google/nano-banana-pro"
 
+# Persistent storage for learned feedback notes (mount a volume onto its parent dir)
+NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH", "/app/data/feedback_notes.json")
+MAX_FEEDBACK_NOTES: int = int(os.getenv("MAX_FEEDBACK_NOTES", "20"))
+
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is not set in .env")
 

@@ -2,27 +2,23 @@ from aiogram.fsm.state import State, StatesGroup
 
 
 class ReferenceFlow(StatesGroup):
-    """Function 1 — generate by reference image (2 variants)."""
-    waiting_reference = State()       # waiting for reference photo
-    waiting_panties = State()         # 2 prompts ready, waiting for panties photo
-    choosing_extras = State()         # panties saved, showing extras menu
+    """Function 1 — generate by reference image (2 variants), aware of panties material/color."""
+    waiting_panties = State()         # waiting for panties photo(s) — analyzed for material/color
+    waiting_reference = State()       # panties analyzed, waiting for reference photo
+    choosing_extras = State()         # prompts ready, showing extras menu
     waiting_extras_text = State()     # user typing extras description
     waiting_extras_image = State()    # user sending extras photo
 
 
-class StyleFlow(StatesGroup):
-    """Function 2 — generate by preset style (5 variants)."""
-    waiting_panties = State()         # waiting for panties photo
-    choosing_style = State()          # panties saved, showing style menu
-    choosing_extras = State()         # style chosen, showing extras menu
-    waiting_extras_text = State()
-    waiting_extras_image = State()
-
-
 class DescribeFlow(StatesGroup):
-    """Function 3 — describe style in words (1 variant)."""
-    waiting_description = State()     # waiting for text description
-    waiting_panties = State()         # prompt ready, waiting for panties photo
+    """Function 2 — describe style in words (1 variant), aware of panties material/color."""
+    waiting_panties = State()         # waiting for panties photo(s) — analyzed for material/color
+    waiting_description = State()     # panties analyzed, waiting for text description
     choosing_extras = State()
     waiting_extras_text = State()
     waiting_extras_image = State()
+
+
+class FeedbackFlow(StatesGroup):
+    """Shared post-generation feedback step, across all flows."""
+    waiting_feedback = State()        # generation just finished, waiting for optional feedback
