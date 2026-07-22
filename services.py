@@ -6,6 +6,7 @@ import replicate
 
 import config
 import notes
+import styles
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,119 @@ async def describe_to_prompt(description: str, panties_analysis: str) -> str:
     """Convert the user's text style description + panties context → generation prompt."""
     nb = await notes.notes_block()
     return await asyncio.to_thread(_describe_to_prompt_sync, description, panties_analysis, nb)
+
+
+# ──────────────────────────────────────────────────────────
+#  Style presets (/style) — returns 3 prompt variants
+# ──────────────────────────────────────────────────────────
+
+def _style_system(style_description: str, panties_analysis: str, notes_block: str) -> str:
+    return f"""You generate product photography prompts for women's lingerie (panties).
+
+STYLE DIRECTION (creative brief — use as inspiration, not a fill-in-the-blank checklist):
+{style_description}
+
+PANTIES CONTEXT (from photo(s) the user already sent — use this to choose surfaces, colors and props
+that complement the panties without exactly matching or clashing with them):
+{panties_analysis}
+
+Compose EXACTLY 3 meaningfully different prompts within this style. Write each as a natural, vivid,
+specific photography brief — not a rigid fill-in-the-blank template. Each of the 3 must use a clearly
+different surface, props and arrangement, and vary the camera angle between them. Avoid falling back on
+the same generic default setups every time (e.g. always rose petals + white satin) — aim for fresh
+combinations within the style each time this is run.
+
+Each prompt MUST still include, woven in naturally:
+- Starts with: "A 3:4 vertical [shot type] of women's panties from the attached image"
+- The arrangement, surface/background, camera angle
+- Lighting direction + type + angle
+- Any props
+- The mood/aesthetic
+- Ends with: "ultra-realistic 4K quality, very sharp focus so the fabric from the attached panties image looks
+  extremely high quality and smooth."
+- Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200
+{notes_block}
+
+Return EXACTLY this format — nothing else:
+PROMPT 1:
+[first prompt]
+
+PROMPT 2:
+[second prompt]
+
+PROMPT 3:
+[third prompt]
+
+RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. Always "from the attached image".
+- Stay within the style's mood and aesthetic
+- Show EXACTLY the same number of panties as visible in the attached image — do not add or remove any pairs
+- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way"""
+
+
+def _generate_style_prompts_sync(style_key: str, panties_analysis: str, notes_block: str) -> list[str]:
+    style_description = styles.STYLE_BLUEPRINTS[style_key]["description"]
+    text = _replicate_run(
+        config.ANALYSIS_MODEL,
+        {
+            "system_prompt": _style_system(style_description, panties_analysis, notes_block),
+            "prompt": "Generate 3 product photography prompts for this style.",
+            "max_tokens": 2048,
+            "extended_thinking": False,
+        },
+    )
+
+    prompts = []
+    for i in range(1, 4):
+        marker = f"PROMPT {i}:"
+        next_marker = f"PROMPT {i + 1}:" if i < 3 else None
+        if marker in text:
+            start = text.index(marker) + len(marker)
+            end = text.index(next_marker) if next_marker and next_marker in text else len(text)
+            prompts.append(text[start:end].strip())
+
+    if len(prompts) < 3:
+        parts = [p.strip() for p in text.split("\n\n") if p.strip() and not p.strip().startswith("PROMPT")]
+        prompts = parts[:3] if len(parts) >= 3 else [text.strip()] * 3
+
+    return prompts[:3]
+
+
+async def generate_style_prompts(style_key: str, panties_analysis: str) -> list[str]:
+    """Generate 3 fresh product photography prompts for a chosen style, aware of panties material/color."""
+    nb = await notes.notes_block()
+    return await asyncio.to_thread(_generate_style_prompts_sync, style_key, panties_analysis, nb)
+
+
+# ──────────────────────────────────────────────────────────
+#  Color-matched accessory suggestion (extras: "💍 Аксессуары в тон")
+# ──────────────────────────────────────────────────────────
+
+_COLOR_ACCESSORY_SYSTEM = """Based on the fabric/color analysis of a pair of panties below, suggest ONE small,
+tasteful jewelry or accessory item (e.g. a necklace, ring, bracelet, hair clip, brooch, anklet) in a color that
+intentionally complements the panties WITHOUT exactly matching or clashing with them.
+
+PANTIES ANALYSIS:
+{panties_analysis}
+
+Format: 'a [color] [accessory]', 5-10 words max.
+Return ONLY the short phrase, nothing else."""
+
+
+def _suggest_color_accessory_sync(panties_analysis: str) -> str:
+    return _replicate_run(
+        config.ANALYSIS_MODEL,
+        {
+            "system_prompt": _COLOR_ACCESSORY_SYSTEM.format(panties_analysis=panties_analysis),
+            "prompt": "Suggest one color-matched accessory.",
+            "max_tokens": 1024,
+            "extended_thinking": False,
+        },
+    )
+
+
+async def suggest_color_matched_accessory(panties_analysis: str) -> str:
+    """Suggest a short, color-complementary accessory description based on the panties analysis."""
+    return await asyncio.to_thread(_suggest_color_accessory_sync, panties_analysis)
 
 
 # ──────────────────────────────────────────────────────────

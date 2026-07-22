@@ -19,7 +19,8 @@ from aiogram.types import (
 import config
 import notes
 import services
-from states import DescribeFlow, FeedbackFlow, ReferenceFlow
+import styles
+from states import DescribeFlow, FeedbackFlow, ReferenceFlow, StyleFlow
 
 # ──────────────────────────────────────────────────────────
 #  Static texts
@@ -32,6 +33,7 @@ START_TEXT = """Привет! 👋
 📋 Доступные команды:
 /reference — по референсу
 /describe — описать стиль своими словами
+/style — выбрать готовый стиль
 /cancel — отменить текущее действие
 
 Подробная инструкция → /help"""
@@ -46,7 +48,7 @@ HELP_TEXT = """📖 Как пользоваться ботом:
 3. Я определю материал и цвет
 4. Пришли любое фото в нужном тебе стиле
 5. Я составлю промпт, учитывая материал/цвет трусов и референс
-6. Получи готовые изображения (PNG-файлами)
+6. Получи готовые изображения (2 варианта, PNG-файлами)
 
 ────────────────────
 ✏️ ФУНКЦИЯ 2 — ОПИСАТЬ СТИЛЬ (/describe)
@@ -55,19 +57,28 @@ HELP_TEXT = """📖 Как пользоваться ботом:
 2. Пришли фото своих трусов (одно или несколько), затем нажми «Готово»
 3. Я определю материал и цвет
 4. Опиши желаемый стиль съёмки словами
-5. Я составлю промпт с учётом материала/цвета трусов → получи изображение
+5. Я составлю промпт с учётом материала/цвета трусов → получи изображение (1 вариант)
+
+────────────────────
+🎨 ФУНКЦИЯ 3 — ГОТОВЫЙ СТИЛЬ (/style)
+────────────────────
+1. Напиши /style
+2. Пришли фото своих трусов (одно или несколько), затем нажми «Готово»
+3. Я определю материал и цвет
+4. Выбери один из 5 стилей: 🌸 Нежный, 🌑 Тёмный, 💎 Rich, 🎲 Смешанное, 🎨 Цветотип
+5. Получи 3 варианта в выбранном стиле
 
 ────────────────────
 🎁 ДОП. ЭЛЕМЕНТЫ
 ────────────────────
 После составления промпта бот предложит добавить в кадр:
-📇 Визитку · 📖 Журнал INTIMNO · или любой реквизит своими словами / фото
+📇 Визитку · 📖 Журнал INTIMNO · 💍 Аксессуары в тон (цвету трусов) · или любой реквизит своими словами / фото
 
 ────────────────────
 💬 ОБРАТНАЯ СВЯЗЬ
 ────────────────────
-После генерации бот спросит, как тебе результат. Фидбэк помогает боту
-подбирать более удачные сочетания в следующий раз.
+После генерации бот предложит ответить на пару коротких вопросов кнопками —
+это помогает подбирать удачнее в следующий раз. Можно согласиться или отказаться.
 
 ────────────────────
 📎 ФОРМАТЫ
@@ -99,6 +110,8 @@ WAITING_TEXT = "⏳ Генерирую изображение, жди немно
 
 ANALYZING_PANTIES_TEXT = "🔍 Смотрю на трусы — определяю материал и цвет..."
 
+STYLE_MENU_TEXT = "🎨 Материал и цвет определены. Выбери стиль:"
+
 CENSORED_TEXT = (
     "🚫 Изображение не прошло через фильтры — сервис его не пропустил.\n\n"
     "Попробуй с другим фото или напиши @oreobra"
@@ -112,17 +125,24 @@ EXTRAS_QUESTION_TEXT = (
     "🎁 Хочешь добавить что-то в кадр?\n\n"
     "📇 Визитка — маленькая визитка с брендом INTIMNO\n"
     "📖 Журнал INTIMNO — журнал с названием бренда\n"
+    "💍 Аксессуары в тон — украшение, подобранное под цвет трусов\n"
     "✏️ Описать — любой реквизит своими словами\n"
     "🖼 Прислать фото — пришли фото реквизита\n\n"
     "Или нажми «Без добавок» — и я сразу запущу генерацию."
 )
 
-FEEDBACK_QUESTION_TEXT = (
-    "💬 Как вам генерация? Буду рада обратной связи — что понравилось, а что стоит поправить.\n\n"
-    "Можно просто написать текстом, или выбрать вариант ниже."
+FEEDBACK_CONSENT_TEXT = (
+    "Не против ответить на пару быстрых вопросов? Это займёт 30 секунд и поможет мне "
+    "подбирать удачнее в следующий раз 🙂"
 )
-
-FEEDBACK_THANKS_TEXT = "Спасибо! Учту это в следующих генерациях 🙏\n\nХочешь ещё? /reference или /describe"
+FEEDBACK_Q1_TEXT = "1/4 — Как вам в целом результат?"
+FEEDBACK_Q2_TEXT = "2/4 — Поверхность/фон подошли к трусам?"
+FEEDBACK_Q3_TEXT = "3/4 — Реквизита/декора было..."
+FEEDBACK_Q4_TEXT = "4/4 — Цвета в кадре сочетались хорошо?"
+FEEDBACK_COMMENT_TEXT = "Хочешь добавить что-то ещё словами? Можно пропустить."
+FEEDBACK_THANKS_TEXT = "Спасибо за ответы! Учту это в следующих генерациях 🙏\n\nХочешь ещё? /reference, /describe или /style"
+FEEDBACK_DECLINED_TEXT = "Хорошо! Хочешь ещё? /reference, /describe или /style"
+FEEDBACK_BUTTON_EXPECTED_TEXT = "Пожалуйста, выбери один из вариантов кнопкой выше 👆"
 
 # MIME types accepted as image files
 _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
@@ -137,11 +157,29 @@ PANTIES_READY_KEYBOARD = InlineKeyboardMarkup(
     ]]
 )
 
+
+def _build_style_keyboard() -> InlineKeyboardMarkup:
+    keys = list(styles.STYLE_BLUEPRINTS.keys())
+    rows = []
+    for i in range(0, len(keys), 2):
+        pair = keys[i:i + 2]
+        rows.append([
+            InlineKeyboardButton(text=styles.STYLE_BLUEPRINTS[k]["name"], callback_data=k)
+            for k in pair
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+STYLE_KEYBOARD = _build_style_keyboard()
+
 EXTRAS_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[
         [
             InlineKeyboardButton(text="📇 Визитка", callback_data="extras_card"),
             InlineKeyboardButton(text="📖 Журнал INTIMNO", callback_data="extras_magazine"),
+        ],
+        [
+            InlineKeyboardButton(text="💍 Аксессуары в тон", callback_data="extras_accessories"),
         ],
         [
             InlineKeyboardButton(text="✏️ Описать словами", callback_data="extras_describe"),
@@ -153,16 +191,49 @@ EXTRAS_KEYBOARD = InlineKeyboardMarkup(
     ]
 )
 
-FEEDBACK_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👍 Понравилось", callback_data="feedback_like"),
-            InlineKeyboardButton(text="👎 Не то", callback_data="feedback_dislike"),
-        ],
-        [
-            InlineKeyboardButton(text="Пропустить", callback_data="feedback_skip"),
-        ],
-    ]
+FEEDBACK_CONSENT_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="Да, давай", callback_data="feedback_consent_yes"),
+        InlineKeyboardButton(text="В другой раз", callback_data="feedback_consent_no"),
+    ]]
+)
+
+FEEDBACK_Q1_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="👍 Нравится", callback_data="fb_q1_like"),
+        InlineKeyboardButton(text="😐 Так себе", callback_data="fb_q1_meh"),
+        InlineKeyboardButton(text="👎 Не понравилось", callback_data="fb_q1_dislike"),
+    ]]
+)
+
+FEEDBACK_Q2_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Отлично подошли", callback_data="fb_q2_good"),
+        InlineKeyboardButton(text="😐 Нормально", callback_data="fb_q2_ok"),
+        InlineKeyboardButton(text="❌ Не подошли", callback_data="fb_q2_bad"),
+    ]]
+)
+
+FEEDBACK_Q3_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="👌 В самый раз", callback_data="fb_q3_right"),
+        InlineKeyboardButton(text="🔺 Слишком много", callback_data="fb_q3_much"),
+        InlineKeyboardButton(text="🔻 Хотелось бы больше", callback_data="fb_q3_less"),
+    ]]
+)
+
+FEEDBACK_Q4_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Хорошо сочетались", callback_data="fb_q4_good"),
+        InlineKeyboardButton(text="😐 Слились в один тон", callback_data="fb_q4_blend"),
+        InlineKeyboardButton(text="❌ Конфликтовали", callback_data="fb_q4_clash"),
+    ]]
+)
+
+FEEDBACK_COMMENT_KEYBOARD = InlineKeyboardMarkup(
+    inline_keyboard=[[
+        InlineKeyboardButton(text="Пропустить", callback_data="fb_comment_skip"),
+    ]]
 )
 
 # ──────────────────────────────────────────────────────────
@@ -216,6 +287,7 @@ async def show_extras_menu(
     flow: str,
     panties_file_ids: list[str],
     prompts: list[str],
+    panties_analysis: str,
 ) -> None:
     """
     Save generation data to state and show the extras selection menu.
@@ -224,11 +296,13 @@ async def show_extras_menu(
     _extras_state = {
         "reference": ReferenceFlow.choosing_extras,
         "describe":  DescribeFlow.choosing_extras,
+        "style":     StyleFlow.choosing_extras,
     }
     await state.update_data(
         flow=flow,
         panties_file_ids=panties_file_ids,
         prompts=prompts,
+        panties_analysis=panties_analysis,
     )
     await state.set_state(_extras_state[flow])
     await message.answer(EXTRAS_QUESTION_TEXT, reply_markup=EXTRAS_KEYBOARD)
@@ -242,7 +316,7 @@ async def run_generation(
 ) -> None:
     """
     Central generation runner. Reads state data, applies optional extras,
-    runs all prompts in parallel, sends results as PNG files, then asks for feedback.
+    runs all prompts in parallel, sends results as PNG files, then starts the feedback flow.
     """
     data = await state.get_data()
     panties_file_ids: list[str] = data["panties_file_ids"]
@@ -299,8 +373,8 @@ async def run_generation(
         await state.clear()
 
     if success > 0:
-        await state.set_state(FeedbackFlow.waiting_feedback)
-        await target.answer(FEEDBACK_QUESTION_TEXT, reply_markup=FEEDBACK_KEYBOARD)
+        await state.set_state(FeedbackFlow.waiting_consent)
+        await target.answer(FEEDBACK_CONSENT_TEXT, reply_markup=FEEDBACK_CONSENT_KEYBOARD)
 
 
 # ──────────────────────────────────────────────────────────
@@ -318,7 +392,7 @@ async def cmd_help(message: Message) -> None:
 
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("✅ Отменено. Начни заново: /reference или /describe")
+    await message.answer("✅ Отменено. Начни заново: /reference, /describe или /style")
 
 
 async def cmd_reference(message: Message, state: FSMContext) -> None:
@@ -333,6 +407,12 @@ async def cmd_describe(message: Message, state: FSMContext) -> None:
     await message.answer(PANTIES_REQUEST_TEXT)
 
 
+async def cmd_style(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(StyleFlow.waiting_panties)
+    await message.answer(PANTIES_REQUEST_TEXT)
+
+
 # ──────────────────────────────────────────────────────────
 #  Panties upload — shared across all flows (multi-photo, then "Готово")
 # ──────────────────────────────────────────────────────────
@@ -340,6 +420,7 @@ async def cmd_describe(message: Message, state: FSMContext) -> None:
 _WAITING_PANTIES_STATES = StateFilter(
     ReferenceFlow.waiting_panties,
     DescribeFlow.waiting_panties,
+    StyleFlow.waiting_panties,
 )
 
 
@@ -411,6 +492,10 @@ async def panties_ready(callback: CallbackQuery, state: FSMContext) -> None:
             "Описание может быть на русском или английском."
         )
 
+    elif current == StyleFlow.waiting_panties:
+        await state.set_state(StyleFlow.choosing_style)
+        await callback.message.answer(STYLE_MENU_TEXT, reply_markup=STYLE_KEYBOARD)
+
 
 # ──────────────────────────────────────────────────────────
 #  Function 1 — Reference flow
@@ -447,7 +532,7 @@ async def ref_got_reference(message: Message, state: FSMContext) -> None:
             f"<b>Вариант 2:</b>\n<code>{p2}</code>",
             parse_mode="HTML",
         )
-        await show_extras_menu(message, state, "reference", panties_file_ids, [p1, p2])
+        await show_extras_menu(message, state, "reference", panties_file_ids, [p1, p2], panties_analysis)
 
     except Exception as exc:
         logging.error("Reference analysis failed: %s", exc)
@@ -484,12 +569,52 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
             f"✅ Промпт по твоему описанию:\n\n<code>{prompt}</code>",
             parse_mode="HTML",
         )
-        await show_extras_menu(message, state, "describe", panties_file_ids, [prompt])
+        await show_extras_menu(message, state, "describe", panties_file_ids, [prompt], panties_analysis)
 
     except Exception as exc:
         logging.error("Description analysis failed: %s", exc)
         await analyzing_msg.delete()
         await message.answer(ERROR_TEXT)
+        await state.clear()
+
+
+# ──────────────────────────────────────────────────────────
+#  Function 3 — Style flow
+# ──────────────────────────────────────────────────────────
+
+async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: user picked one of the 5 preset styles."""
+    style_key = callback.data
+    if style_key not in styles.STYLE_BLUEPRINTS:
+        await callback.answer()
+        return
+
+    style_name = styles.STYLE_BLUEPRINTS[style_key]["name"]
+    data = await state.get_data()
+    panties_file_ids = data.get("panties_file_ids")
+    panties_analysis = data.get("panties_analysis", "")
+    if not panties_file_ids:
+        await callback.answer()
+        await callback.message.answer("Что-то пошло не так. Начни заново: /style")
+        await state.clear()
+        return
+
+    await callback.answer()
+    await callback.message.edit_text(f"🎨 Стиль «{style_name}» — генерирую 3 промпта...")
+
+    try:
+        prompts = await services.generate_style_prompts(style_key, panties_analysis)
+
+        numbered = "\n\n".join(f"<b>Вариант {i}:</b>\n<code>{p}</code>" for i, p in enumerate(prompts, start=1))
+        await callback.message.answer(
+            f"✅ Промпты в стиле «{style_name}»:\n\n{numbered}",
+            parse_mode="HTML",
+        )
+        await show_extras_menu(callback.message, state, "style", panties_file_ids, prompts, panties_analysis)
+
+    except Exception as exc:
+        logging.error("Style prompt generation failed: %s", exc)
+        await callback.message.answer(ERROR_TEXT)
         await state.clear()
 
 
@@ -500,16 +625,19 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
 _EXTRAS_TEXT_STATES = StateFilter(
     ReferenceFlow.waiting_extras_text,
     DescribeFlow.waiting_extras_text,
+    StyleFlow.waiting_extras_text,
 )
 
 _EXTRAS_IMAGE_STATES = StateFilter(
     ReferenceFlow.waiting_extras_image,
     DescribeFlow.waiting_extras_image,
+    StyleFlow.waiting_extras_image,
 )
 
 _CHOOSING_EXTRAS_STATES = StateFilter(
     ReferenceFlow.choosing_extras,
     DescribeFlow.choosing_extras,
+    StyleFlow.choosing_extras,
 )
 
 
@@ -518,14 +646,17 @@ async def extras_chosen(callback: CallbackQuery, state: FSMContext) -> None:
     choice = callback.data
     data = await state.get_data()
     flow = data.get("flow", "reference")
+    panties_analysis = data.get("panties_analysis", "")
 
     _text_state = {
         "reference": ReferenceFlow.waiting_extras_text,
         "describe":  DescribeFlow.waiting_extras_text,
+        "style":     StyleFlow.waiting_extras_text,
     }
     _image_state = {
         "reference": ReferenceFlow.waiting_extras_image,
         "describe":  DescribeFlow.waiting_extras_image,
+        "style":     StyleFlow.waiting_extras_image,
     }
 
     if choice == "extras_card":
@@ -539,6 +670,19 @@ async def extras_chosen(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_text("📖 Добавляю журнал INTIMNO — запускаю!")
         await callback.answer()
         await run_generation(callback.message, callback.bot, state, extras)
+
+    elif choice == "extras_accessories":
+        await callback.answer()
+        await callback.message.edit_text("💍 Подбираю аксессуар в тон трусам...")
+        try:
+            accessory = await services.suggest_color_matched_accessory(panties_analysis)
+            extras = f"with {accessory} placed in the composition"
+            await callback.message.answer(f"✅ Добавляю: «{accessory}» — запускаю!")
+            await run_generation(callback.message, callback.bot, state, extras)
+        except Exception as exc:
+            logging.error("Color-matched accessory suggestion failed: %s", exc)
+            await callback.message.answer(ERROR_TEXT)
+            await state.clear()
 
     elif choice == "extras_describe":
         await callback.message.edit_text(
@@ -618,42 +762,94 @@ async def extras_unexpected(message: Message) -> None:
 
 
 # ──────────────────────────────────────────────────────────
-#  Feedback handlers (shared across all flows)
+#  Feedback handlers — guided Q&A (shared across all flows)
 # ──────────────────────────────────────────────────────────
 
-async def feedback_callback(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: user tapped a feedback button."""
-    choice = callback.data
+_FEEDBACK_BUTTON_STATES = StateFilter(
+    FeedbackFlow.waiting_consent,
+    FeedbackFlow.waiting_q1,
+    FeedbackFlow.waiting_q2,
+    FeedbackFlow.waiting_q3,
+    FeedbackFlow.waiting_q4,
+)
 
-    if choice == "feedback_skip":
-        await callback.message.edit_text("Хорошо! Хочешь ещё? /reference или /describe")
-        await callback.answer()
+
+async def feedback_consent(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: user answered whether they want to give feedback."""
+    await callback.answer()
+
+    if callback.data == "feedback_consent_no":
+        await callback.message.edit_text(FEEDBACK_DECLINED_TEXT)
         await state.clear()
         return
 
-    if choice == "feedback_like":
-        await callback.message.edit_text(
-            "Рада, что понравилось! 🙌 Хочешь ещё? /reference или /describe"
+    await callback.message.edit_text("Отлично, начнём! 🙂")
+    await callback.message.answer(FEEDBACK_Q1_TEXT, reply_markup=FEEDBACK_Q1_KEYBOARD)
+    await state.set_state(FeedbackFlow.waiting_q1)
+
+
+async def feedback_q1(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: overall impression — informational only, no note stored."""
+    await callback.answer()
+    await callback.message.edit_text("Записала ✍️")
+    await callback.message.answer(FEEDBACK_Q2_TEXT, reply_markup=FEEDBACK_Q2_KEYBOARD)
+    await state.set_state(FeedbackFlow.waiting_q2)
+
+
+async def feedback_q2(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: did the surface/background suit the panties."""
+    await callback.answer()
+    if callback.data == "fb_q2_bad":
+        await notes.add_note(
+            "Be more careful matching the surface/background to the panties' fabric — "
+            "a recent generation's surface didn't suit it well."
         )
-        await callback.answer()
-        await state.clear()
-        return
+    await callback.message.edit_text("Записала ✍️")
+    await callback.message.answer(FEEDBACK_Q3_TEXT, reply_markup=FEEDBACK_Q3_KEYBOARD)
+    await state.set_state(FeedbackFlow.waiting_q3)
 
-    if choice == "feedback_dislike":
-        await callback.message.edit_text(
-            "Жаль! Напиши в двух словах, что не понравилось — учту это в следующий раз "
-            "(или нажми /cancel, чтобы пропустить)."
+
+async def feedback_q3(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: amount of props/decor."""
+    await callback.answer()
+    if callback.data == "fb_q3_much":
+        await notes.add_note("Prefer fewer props and a more minimal amount of decor in compositions.")
+    elif callback.data == "fb_q3_less":
+        await notes.add_note("Feel free to add more decorative elements/props to compositions.")
+    await callback.message.edit_text("Записала ✍️")
+    await callback.message.answer(FEEDBACK_Q4_TEXT, reply_markup=FEEDBACK_Q4_KEYBOARD)
+    await state.set_state(FeedbackFlow.waiting_q4)
+
+
+async def feedback_q4(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: did the colors work together."""
+    await callback.answer()
+    if callback.data == "fb_q4_blend":
+        await notes.add_note(
+            "Ensure stronger contrast between the panties color and the surrounding palette — "
+            "avoid colors blending into one tone."
         )
-        await callback.answer()
-        # stay in FeedbackFlow.waiting_feedback to receive the follow-up text
-        return
+    elif callback.data == "fb_q4_clash":
+        await notes.add_note(
+            "Choose calmer, more harmonious color palettes — avoid colors that visually clash with the panties."
+        )
+    await callback.message.edit_text("Записала ✍️")
+    await callback.message.answer(FEEDBACK_COMMENT_TEXT, reply_markup=FEEDBACK_COMMENT_KEYBOARD)
+    await state.set_state(FeedbackFlow.waiting_comment)
 
 
-async def feedback_got_text(message: Message, state: FSMContext) -> None:
-    """User wrote free-form feedback text after a generation."""
+async def feedback_comment_skip(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: user skipped the optional free-text comment."""
+    await callback.answer()
+    await callback.message.edit_text(FEEDBACK_THANKS_TEXT)
+    await state.clear()
+
+
+async def feedback_comment_text(message: Message, state: FSMContext) -> None:
+    """User wrote a free-form comment to close out the feedback Q&A."""
     text = message.text.strip() if message.text else ""
     if not text:
-        await message.answer("Напиши фидбэк текстом, или /cancel чтобы пропустить.")
+        await message.answer("Напиши комментарий текстом, или нажми «Пропустить».")
         return
 
     await state.clear()
@@ -667,10 +863,15 @@ async def feedback_got_text(message: Message, state: FSMContext) -> None:
     await message.answer(FEEDBACK_THANKS_TEXT)
 
 
-async def feedback_unexpected_image(message: Message, state: FSMContext) -> None:
-    """Image received while waiting for feedback — just ignore feedback and clear state."""
+async def feedback_comment_unexpected_image(message: Message, state: FSMContext) -> None:
+    """Image received while waiting for the optional comment — just wrap up."""
     await state.clear()
-    await message.answer("Хорошо, пропускаю фидбэк. Хочешь ещё? /reference или /describe")
+    await message.answer(FEEDBACK_THANKS_TEXT)
+
+
+async def feedback_button_expected(message: Message) -> None:
+    """Text/image received while a feedback question expects a button tap."""
+    await message.answer(FEEDBACK_BUTTON_EXPECTED_TEXT)
 
 
 # ──────────────────────────────────────────────────────────
@@ -689,7 +890,7 @@ async def fallback_unexpected_image(message: Message) -> None:
     """Image received outside any active flow."""
     await message.answer(
         "Не знаю, что делать с этим изображением 🤔\n\n"
-        "Начни через /reference или /describe"
+        "Начни через /reference, /describe или /style"
     )
 
 
@@ -700,6 +901,7 @@ async def fallback_unexpected_text(message: Message, state: FSMContext) -> None:
         ReferenceFlow.waiting_panties,
         ReferenceFlow.waiting_reference,
         DescribeFlow.waiting_panties,
+        StyleFlow.waiting_panties,
     ):
         await message.answer(
             "Мне нужно изображение, не текст.\n"
@@ -708,7 +910,7 @@ async def fallback_unexpected_text(message: Message, state: FSMContext) -> None:
     else:
         await message.answer(
             "Я понимаю команды и изображения.\n\n"
-            "Используй /reference или /describe для начала."
+            "Используй /reference, /describe или /style для начала."
         )
 
 
@@ -722,6 +924,7 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="help",      description="Подробная справка"),
         BotCommand(command="reference", description="Генерация по референсу"),
         BotCommand(command="describe",  description="Описать стиль словами"),
+        BotCommand(command="style",     description="Выбрать готовый стиль"),
         BotCommand(command="cancel",    description="Отменить текущее действие"),
     ])
 
@@ -737,6 +940,7 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(cmd_cancel, Command("cancel"))
     dp.message.register(cmd_reference, Command("reference"))
     dp.message.register(cmd_describe, Command("describe"))
+    dp.message.register(cmd_style, Command("style"))
 
     # ── Panties upload — shared across all flows (first step in every flow) ──
     dp.message.register(got_panties_photo, _WAITING_PANTIES_STATES, _IMAGE_FILTER)
@@ -751,6 +955,13 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(describe_got_description, DescribeFlow.waiting_description, F.text)
     dp.message.register(describe_unexpected_image, DescribeFlow.waiting_description, _IMAGE_FILTER)
 
+    # ── Function 3 — Style flow ────────────────────────────
+    dp.callback_query.register(
+        style_chosen,
+        F.data.in_(styles.STYLE_BLUEPRINTS.keys()),
+        StyleFlow.choosing_style,
+    )
+
     # ── Extras (shared across all flows) ──────────────────
     dp.callback_query.register(
         extras_chosen,
@@ -762,20 +973,20 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(extras_image_got_text, _EXTRAS_IMAGE_STATES, F.text)
     dp.message.register(extras_unexpected, _CHOOSING_EXTRAS_STATES)
 
-    # ── Feedback (shared across all flows) ─────────────────
-    dp.callback_query.register(
-        feedback_callback,
-        F.data.startswith("feedback_"),
-        FeedbackFlow.waiting_feedback,
-    )
-    dp.message.register(feedback_got_text, FeedbackFlow.waiting_feedback, F.text)
-    dp.message.register(feedback_unexpected_image, FeedbackFlow.waiting_feedback, _IMAGE_FILTER)
+    # ── Feedback — guided Q&A (shared across all flows) ────
+    dp.callback_query.register(feedback_consent, F.data.startswith("feedback_consent_"), FeedbackFlow.waiting_consent)
+    dp.callback_query.register(feedback_q1, F.data.startswith("fb_q1_"), FeedbackFlow.waiting_q1)
+    dp.callback_query.register(feedback_q2, F.data.startswith("fb_q2_"), FeedbackFlow.waiting_q2)
+    dp.callback_query.register(feedback_q3, F.data.startswith("fb_q3_"), FeedbackFlow.waiting_q3)
+    dp.callback_query.register(feedback_q4, F.data.startswith("fb_q4_"), FeedbackFlow.waiting_q4)
+    dp.callback_query.register(feedback_comment_skip, F.data == "fb_comment_skip", FeedbackFlow.waiting_comment)
+    dp.message.register(feedback_comment_text, FeedbackFlow.waiting_comment, F.text)
+    dp.message.register(feedback_comment_unexpected_image, FeedbackFlow.waiting_comment, _IMAGE_FILTER)
+    dp.message.register(feedback_button_expected, _FEEDBACK_BUTTON_STATES)
 
-    # ── Stale "Готово" button pressed outside waiting_panties state ──
-    dp.callback_query.register(
-        lambda cb: cb.answer(),
-        F.data == "panties_ready",
-    )
+    # ── Stale buttons pressed outside their expected state ─
+    dp.callback_query.register(lambda cb: cb.answer(), F.data == "panties_ready")
+    dp.callback_query.register(lambda cb: cb.answer(), F.data.in_(styles.STYLE_BLUEPRINTS.keys()))
 
     # ── Fallbacks (must come last) ─────────────────────────
     dp.message.register(fallback_unexpected_image, _IMAGE_FILTER)

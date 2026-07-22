@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY bot.py config.py states.py services.py notes.py ./
+COPY bot.py config.py states.py services.py notes.py styles.py ./
 
 RUN mkdir -p /app/data
 

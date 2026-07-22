@@ -19,6 +19,20 @@ class DescribeFlow(StatesGroup):
     waiting_extras_image = State()
 
 
+class StyleFlow(StatesGroup):
+    """Function 3 — pick one of 5 preset styles (3 variants), aware of panties material/color."""
+    waiting_panties = State()         # waiting for panties photo(s) — analyzed for material/color
+    choosing_style = State()          # panties analyzed, waiting for style choice
+    choosing_extras = State()
+    waiting_extras_text = State()
+    waiting_extras_image = State()
+
+
 class FeedbackFlow(StatesGroup):
-    """Shared post-generation feedback step, across all flows."""
-    waiting_feedback = State()        # generation just finished, waiting for optional feedback
+    """Shared post-generation feedback step, across all flows — a short guided Q&A."""
+    waiting_consent = State()   # asking whether the user wants to answer a few quick questions
+    waiting_q1 = State()        # overall impression
+    waiting_q2 = State()        # did the surface/background suit the panties
+    waiting_q3 = State()        # amount of props/decor
+    waiting_q4 = State()        # did the colors work together
+    waiting_comment = State()   # optional free-text comment
