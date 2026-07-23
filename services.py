@@ -45,6 +45,7 @@ def _replicate_run(model: str, input_data: dict) -> str:
 _PANTIES_ANALYSIS_SYSTEM = """You are a professional lingerie product photographer's assistant.
 
 Look at the attached photo of women's panties and identify:
+- COUNT: the exact number of individual panties/pairs clearly visible in this photo (a plain integer)
 - Fabric/material (e.g. lace, cotton, satin, mesh, seamless microfiber, silk, ribbed jersey)
 - Dominant color(s) and exact tone (e.g. warm ivory, cool jet black, dusty rose, sage green)
 - Print or pattern, if any
@@ -55,32 +56,77 @@ complement this specific fabric and color WITHOUT exactly matching it or blendin
 avoid a busy print near an equally busy background), and what to avoid pairing it with (e.g. don't put delicate lace on a
 rough raw surface, don't put a bold print near an equally busy prop).
 
-Return ONLY this analysis, in English, no preamble, no headers, max 80 words."""
+Return EXACTLY this format, nothing else:
+COUNT: <integer>
+ANALYSIS: <the fabric/color/print/character description and styling guidance, in English, max 80 words>"""
 
 
-def _analyze_panties_sync(image_bytes: bytes) -> str:
-    return _replicate_run(
+def _analyze_panties_sync(image_bytes: bytes) -> tuple[int, str]:
+    text = _replicate_run(
         config.ANALYSIS_MODEL,
         {
             "system_prompt": _PANTIES_ANALYSIS_SYSTEM,
-            "prompt": "Analyze the material, color and styling fit of these panties.",
+            "prompt": "Count the panties and analyze the material, color and styling fit of these panties.",
             "image": io.BytesIO(image_bytes),
             "max_tokens": 1024,
             "extended_thinking": False,
         },
     )
 
+    count = 1
+    analysis = text
+    if "COUNT:" in text and "ANALYSIS:" in text:
+        try:
+            count_part = text.split("COUNT:", 1)[1].split("ANALYSIS:", 1)[0].strip()
+            count = max(1, int("".join(ch for ch in count_part if ch.isdigit()) or "1"))
+        except (ValueError, IndexError):
+            count = 1
+        analysis = text.split("ANALYSIS:", 1)[1].strip()
 
-async def analyze_panties(image_bytes: bytes) -> str:
-    """Analyze a panties photo → material/color/styling guidance, used to steer prompt generation."""
+    return count, analysis
+
+
+async def analyze_panties(image_bytes: bytes) -> tuple[int, str]:
+    """
+    Analyze a panties photo → (count of panties visible, material/color/styling guidance).
+    The count is used to explicitly lock the panties count in every generated prompt.
+    """
     return await asyncio.to_thread(_analyze_panties_sync, image_bytes)
+
+
+def _count_phrase(count: int) -> str:
+    """'the panties' for 1, 'N women's panties' for more — used inside the generated prompt text itself."""
+    return "the panties" if count == 1 else f"{count} women's panties"
+
+
+def _hard_rules_block(count: int) -> str:
+    """
+    Non-negotiable rules about count/color/material preservation, injected into every
+    prompt-generation system prompt. This directly targets a real failure mode: the
+    generation model sometimes drops/adds panties or subtly recolors/re-textures them.
+    """
+    phrase = _count_phrase(count)
+    return f"""
+NON-NEGOTIABLE RULES (apply to every one of the generated prompts):
+- The attached image shows EXACTLY {count} pair(s) of panties. Every single generated prompt MUST explicitly
+  spell out the count in its own text, using the phrase "{phrase} from the attached image" (adapt grammar
+  naturally, but the number {count} itself must appear as text in the prompt if count > 1).
+- Every generated prompt MUST depict all {count} of them — never fewer, never more.
+- Do NOT recolor, re-tint, or alter the panties' color in any way.
+- Do NOT change, simplify, or omit the print/pattern of the panties.
+- Do NOT change the fabric/material appearance of the panties (e.g. lace must stay lace, satin must stay satin).
+- The panties themselves must be reproduced pixel-faithful to the attached image — only the surroundings
+  (surface, props, lighting, background) are creative territory, never the garment itself.
+- Unless the user's style/reference clearly calls for something else, include a warm, beautiful natural white
+  sunlight as the default lighting mood ("beautiful warm white sunlight, soft natural shadows") in each prompt.
+"""
 
 
 # ──────────────────────────────────────────────────────────
 #  Reference image analysis — returns 2 prompt variants
 # ──────────────────────────────────────────────────────────
 
-def _reference_system(panties_analysis: str, notes_block: str) -> str:
+def _reference_system(panties_analysis: str, notes_block: str, count: int) -> str:
     return f"""You are analyzing a reference image to extract shooting style parameters for two professional
 product photography prompts for women's panties.
 
@@ -101,7 +147,7 @@ candle + dark velvet) unless the reference image specifically calls for it — a
 from previous generations each time.
 
 Each prompt MUST still include, woven in naturally:
-- Starts with: "A 3:4 vertical [shot type] of women's panties from the attached image"
+- Starts with: "A 3:4 vertical [shot type] of {_count_phrase(count)} from the attached image"
 - The arrangement, surface/background, camera angle
 - Lighting direction + type + angle
 - Any props
@@ -110,7 +156,7 @@ Each prompt MUST still include, woven in naturally:
   extremely high quality and smooth."
 - Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200
 {notes_block}
-
+{_hard_rules_block(count)}
 Return EXACTLY this format — nothing else:
 VARIANT 1:
 [first prompt]
@@ -118,16 +164,14 @@ VARIANT 1:
 VARIANT 2:
 [second prompt]
 
-RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. Always "from the attached image".
-- Show EXACTLY the same number of panties as visible in the attached image — do not add or remove any pairs
-- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way"""
+RULES: 3:4 vertical only. Product/flatlay only — NO people. English only."""
 
 
-def _analyze_double_sync(image_bytes: bytes, panties_analysis: str, notes_block: str) -> tuple[str, str]:
+def _analyze_double_sync(image_bytes: bytes, panties_analysis: str, notes_block: str, count: int) -> tuple[str, str]:
     text = _replicate_run(
         config.ANALYSIS_MODEL,
         {
-            "system_prompt": _reference_system(panties_analysis, notes_block),
+            "system_prompt": _reference_system(panties_analysis, notes_block, count),
             "prompt": "Analyze this reference image and compose 2 different product photography prompt variants.",
             "image": io.BytesIO(image_bytes),
             "max_tokens": 4096,
@@ -149,17 +193,17 @@ def _analyze_double_sync(image_bytes: bytes, panties_analysis: str, notes_block:
     return p1, p2
 
 
-async def analyze_reference_double(image_bytes: bytes, panties_analysis: str) -> tuple[str, str]:
+async def analyze_reference_double(image_bytes: bytes, panties_analysis: str, count: int = 1) -> tuple[str, str]:
     """Analyze reference image + panties context → return 2 prompt variants."""
     nb = await notes.notes_block()
-    return await asyncio.to_thread(_analyze_double_sync, image_bytes, panties_analysis, nb)
+    return await asyncio.to_thread(_analyze_double_sync, image_bytes, panties_analysis, nb, count)
 
 
 # ──────────────────────────────────────────────────────────
 #  Text description → prompt
 # ──────────────────────────────────────────────────────────
 
-def _describe_system(panties_analysis: str, notes_block: str) -> str:
+def _describe_system(panties_analysis: str, notes_block: str, count: int) -> str:
     return f"""You convert a user's style description into a professional product photography prompt for women's panties.
 
 The user describes in Russian or English a desired shooting style.
@@ -172,7 +216,7 @@ Compose ONE prompt as a natural, vivid, specific photography brief (not a rigid 
 that follows the user's description and is adapted to the panties context above.
 
 The prompt MUST still include, woven in naturally:
-- Starts with: "A 3:4 vertical [shot type] of women's panties from the attached image"
+- Starts with: "A 3:4 vertical [shot type] of {_count_phrase(count)} from the attached image"
 - The arrangement, surface/background, camera angle
 - Lighting direction + type + angle
 - Any props
@@ -181,19 +225,17 @@ The prompt MUST still include, woven in naturally:
   extremely high quality and smooth."
 - Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200
 {notes_block}
-
-RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. "from the attached image" for panties.
-- Show EXACTLY the same number of panties as visible in the attached image — do not add or remove any pairs
-- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way
+{_hard_rules_block(count)}
+RULES: 3:4 vertical only. Product/flatlay only — NO people. English only.
 
 Return ONLY the prompt, no explanation, no preamble."""
 
 
-def _describe_to_prompt_sync(description: str, panties_analysis: str, notes_block: str) -> str:
+def _describe_to_prompt_sync(description: str, panties_analysis: str, notes_block: str, count: int) -> str:
     return _replicate_run(
         config.ANALYSIS_MODEL,
         {
-            "system_prompt": _describe_system(panties_analysis, notes_block),
+            "system_prompt": _describe_system(panties_analysis, notes_block, count),
             "prompt": description,
             "max_tokens": 1024,
             "extended_thinking": False,
@@ -201,17 +243,17 @@ def _describe_to_prompt_sync(description: str, panties_analysis: str, notes_bloc
     )
 
 
-async def describe_to_prompt(description: str, panties_analysis: str) -> str:
+async def describe_to_prompt(description: str, panties_analysis: str, count: int = 1) -> str:
     """Convert the user's text style description + panties context → generation prompt."""
     nb = await notes.notes_block()
-    return await asyncio.to_thread(_describe_to_prompt_sync, description, panties_analysis, nb)
+    return await asyncio.to_thread(_describe_to_prompt_sync, description, panties_analysis, nb, count)
 
 
 # ──────────────────────────────────────────────────────────
 #  Style presets (/style) — returns 3 prompt variants
 # ──────────────────────────────────────────────────────────
 
-def _style_system(style_description: str, panties_analysis: str, notes_block: str) -> str:
+def _style_system(style_description: str, panties_analysis: str, notes_block: str, count: int) -> str:
     return f"""You generate product photography prompts for women's lingerie (panties).
 
 STYLE DIRECTION (creative brief — use as inspiration, not a fill-in-the-blank checklist):
@@ -221,14 +263,14 @@ PANTIES CONTEXT (from photo(s) the user already sent — use this to choose surf
 that complement the panties without exactly matching or clashing with them):
 {panties_analysis}
 
-Compose EXACTLY 3 meaningfully different prompts within this style. Write each as a natural, vivid,
-specific photography brief — not a rigid fill-in-the-blank template. Each of the 3 must use a clearly
+Compose EXACTLY 2 meaningfully different prompts within this style. Write each as a natural, vivid,
+specific photography brief — not a rigid fill-in-the-blank template. The 2 must use a clearly
 different surface, props and arrangement, and vary the camera angle between them. Avoid falling back on
 the same generic default setups every time (e.g. always rose petals + white satin) — aim for fresh
 combinations within the style each time this is run.
 
 Each prompt MUST still include, woven in naturally:
-- Starts with: "A 3:4 vertical [shot type] of women's panties from the attached image"
+- Starts with: "A 3:4 vertical [shot type] of {_count_phrase(count)} from the attached image"
 - The arrangement, surface/background, camera angle
 - Lighting direction + type + angle
 - Any props
@@ -237,7 +279,7 @@ Each prompt MUST still include, woven in naturally:
   extremely high quality and smooth."
 - Camera settings: Shot on Canon EOS R5 or Sony A7 IV, 50mm or 85mm prime lens, aperture f/4–f/8, ISO 100–200
 {notes_block}
-
+{_hard_rules_block(count)}
 Return EXACTLY this format — nothing else:
 PROMPT 1:
 [first prompt]
@@ -245,47 +287,42 @@ PROMPT 1:
 PROMPT 2:
 [second prompt]
 
-PROMPT 3:
-[third prompt]
-
-RULES: 3:4 vertical only. Product/flatlay only — NO people. English only. Always "from the attached image".
-- Stay within the style's mood and aesthetic
-- Show EXACTLY the same number of panties as visible in the attached image — do not add or remove any pairs
-- Preserve the exact color, print, and design of the panties from the attached image — do not recolor or alter them in any way"""
+RULES: 3:4 vertical only. Product/flatlay only — NO people. English only.
+- Stay within the style's mood and aesthetic"""
 
 
-def _generate_style_prompts_sync(style_key: str, panties_analysis: str, notes_block: str) -> list[str]:
+def _generate_style_prompts_sync(style_key: str, panties_analysis: str, notes_block: str, count: int) -> list[str]:
     style_description = styles.STYLE_BLUEPRINTS[style_key]["description"]
     text = _replicate_run(
         config.ANALYSIS_MODEL,
         {
-            "system_prompt": _style_system(style_description, panties_analysis, notes_block),
-            "prompt": "Generate 3 product photography prompts for this style.",
+            "system_prompt": _style_system(style_description, panties_analysis, notes_block, count),
+            "prompt": "Generate 2 product photography prompts for this style.",
             "max_tokens": 2048,
             "extended_thinking": False,
         },
     )
 
     prompts = []
-    for i in range(1, 4):
+    for i in range(1, 3):
         marker = f"PROMPT {i}:"
-        next_marker = f"PROMPT {i + 1}:" if i < 3 else None
+        next_marker = f"PROMPT {i + 1}:" if i < 2 else None
         if marker in text:
             start = text.index(marker) + len(marker)
             end = text.index(next_marker) if next_marker and next_marker in text else len(text)
             prompts.append(text[start:end].strip())
 
-    if len(prompts) < 3:
+    if len(prompts) < 2:
         parts = [p.strip() for p in text.split("\n\n") if p.strip() and not p.strip().startswith("PROMPT")]
-        prompts = parts[:3] if len(parts) >= 3 else [text.strip()] * 3
+        prompts = parts[:2] if len(parts) >= 2 else [text.strip()] * 2
 
-    return prompts[:3]
+    return prompts[:2]
 
 
-async def generate_style_prompts(style_key: str, panties_analysis: str) -> list[str]:
-    """Generate 3 fresh product photography prompts for a chosen style, aware of panties material/color."""
+async def generate_style_prompts(style_key: str, panties_analysis: str, count: int = 1) -> list[str]:
+    """Generate 2 fresh product photography prompts for a chosen style, aware of panties material/color."""
     nb = await notes.notes_block()
-    return await asyncio.to_thread(_generate_style_prompts_sync, style_key, panties_analysis, nb)
+    return await asyncio.to_thread(_generate_style_prompts_sync, style_key, panties_analysis, nb, count)
 
 
 # ──────────────────────────────────────────────────────────

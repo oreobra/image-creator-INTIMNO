@@ -66,7 +66,7 @@ HELP_TEXT = """📖 Как пользоваться ботом:
 2. Пришли фото своих трусов (одно или несколько), затем нажми «Готово»
 3. Я определю материал и цвет
 4. Выбери один из 5 стилей: 🌸 Нежный, 🌑 Тёмный, 💎 Rich, 🎲 Смешанное, 🎨 Цветотип
-5. Получи 3 варианта в выбранном стиле
+5. Получи 2 варианта в выбранном стиле
 
 ────────────────────
 🎁 ДОП. ЭЛЕМЕНТЫ
@@ -465,14 +465,14 @@ async def panties_ready(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         # Use the first uploaded photo as the basis for material/color analysis
         first_bytes = await download_telegram_file(callback.bot, file_ids[0])
-        panties_analysis = await services.analyze_panties(first_bytes)
+        panties_count, panties_analysis = await services.analyze_panties(first_bytes)
     except Exception as exc:
         logging.error("Panties analysis failed: %s", exc)
         await callback.message.answer(ERROR_TEXT)
         await state.clear()
         return
 
-    await state.update_data(panties_analysis=panties_analysis)
+    await state.update_data(panties_analysis=panties_analysis, panties_count=panties_count)
 
     if current == ReferenceFlow.waiting_panties:
         await state.set_state(ReferenceFlow.waiting_reference)
@@ -514,6 +514,7 @@ async def ref_got_reference(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     panties_file_ids = data.get("panties_file_ids")
     panties_analysis = data.get("panties_analysis", "")
+    panties_count = data.get("panties_count", 1)
     if not panties_file_ids:
         await message.answer("Что-то пошло не так. Начни заново: /reference")
         await state.clear()
@@ -523,7 +524,7 @@ async def ref_got_reference(message: Message, state: FSMContext) -> None:
 
     try:
         image_bytes = await download_telegram_file(message.bot, file_id)
-        p1, p2 = await services.analyze_reference_double(image_bytes, panties_analysis)
+        p1, p2 = await services.analyze_reference_double(image_bytes, panties_analysis, panties_count)
 
         await analyzing_msg.delete()
         await message.answer(
@@ -554,6 +555,7 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
     data = await state.get_data()
     panties_file_ids = data.get("panties_file_ids")
     panties_analysis = data.get("panties_analysis", "")
+    panties_count = data.get("panties_count", 1)
     if not panties_file_ids:
         await message.answer("Что-то пошло не так. Начни заново: /describe")
         await state.clear()
@@ -562,7 +564,7 @@ async def describe_got_description(message: Message, state: FSMContext) -> None:
     analyzing_msg = await message.answer("🎨 Создаю промпт по твоему описанию...")
 
     try:
-        prompt = await services.describe_to_prompt(message.text.strip(), panties_analysis)
+        prompt = await services.describe_to_prompt(message.text.strip(), panties_analysis, panties_count)
 
         await analyzing_msg.delete()
         await message.answer(
@@ -593,6 +595,7 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     panties_file_ids = data.get("panties_file_ids")
     panties_analysis = data.get("panties_analysis", "")
+    panties_count = data.get("panties_count", 1)
     if not panties_file_ids:
         await callback.answer()
         await callback.message.answer("Что-то пошло не так. Начни заново: /style")
@@ -600,10 +603,10 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     await callback.answer()
-    await callback.message.edit_text(f"🎨 Стиль «{style_name}» — генерирую 3 промпта...")
+    await callback.message.edit_text(f"🎨 Стиль «{style_name}» — генерирую 2 промпта...")
 
     try:
-        prompts = await services.generate_style_prompts(style_key, panties_analysis)
+        prompts = await services.generate_style_prompts(style_key, panties_analysis, panties_count)
 
         numbered = "\n\n".join(f"<b>Вариант {i}:</b>\n<code>{p}</code>" for i, p in enumerate(prompts, start=1))
         await callback.message.answer(
