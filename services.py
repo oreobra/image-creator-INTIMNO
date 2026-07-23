@@ -63,7 +63,7 @@ ANALYSIS: <the fabric/color/print/character description and styling guidance, in
 
 def _analyze_panties_sync(image_bytes: bytes) -> tuple[int, str]:
     text = _replicate_run(
-        config.ANALYSIS_MODEL,
+        config.FAST_MODEL,
         {
             "system_prompt": _PANTIES_ANALYSIS_SYSTEM,
             "prompt": "Count the panties and analyze the material, color and styling fit of these panties.",
@@ -330,8 +330,14 @@ async def generate_style_prompts(style_key: str, panties_analysis: str, count: i
 # ──────────────────────────────────────────────────────────
 
 _COLOR_ACCESSORY_SYSTEM = """Based on the fabric/color analysis of a pair of panties below, suggest ONE small,
-tasteful jewelry or accessory item (e.g. a necklace, ring, bracelet, hair clip, brooch, anklet) in a color that
-intentionally complements the panties WITHOUT exactly matching or clashing with them.
+tasteful jewelry or accessory item (e.g. a necklace, ring, bracelet, hair clip, brooch, anklet, hair pin,
+ribbon) that suits BOTH:
+1. Color — intentionally complements the panties WITHOUT exactly matching or clashing with them.
+2. Character/type — the accessory's own material and style should match the fabric's character, not just
+   its color. Delicate/soft fabrics (cotton, jersey, simple lace) call for softer, simpler accessories
+   (e.g. a thin ribbon, a small pearl, a delicate flower clip) — not heavy opulent pieces. Luxe fabrics
+   (silk, satin, fine lace) can carry more opulent accessories (e.g. gold or crystal jewelry). Sporty/
+   everyday fabrics call for something casual, not jewelry-store luxury.
 
 PANTIES ANALYSIS:
 {panties_analysis}
@@ -342,7 +348,7 @@ Return ONLY the short phrase, nothing else."""
 
 def _suggest_color_accessory_sync(panties_analysis: str) -> str:
     return _replicate_run(
-        config.ANALYSIS_MODEL,
+        config.FAST_MODEL,
         {
             "system_prompt": _COLOR_ACCESSORY_SYSTEM.format(panties_analysis=panties_analysis),
             "prompt": "Suggest one color-matched accessory.",
@@ -372,7 +378,7 @@ _EXTRAS_IMAGE_SYSTEM = (
 
 def _analyze_extras_sync(image_bytes: bytes) -> str:
     return _replicate_run(
-        config.ANALYSIS_MODEL,
+        config.FAST_MODEL,
         {
             "system_prompt": _EXTRAS_IMAGE_SYSTEM,
             "prompt": "Describe this object briefly.",
@@ -408,7 +414,7 @@ Return ONLY the note text or NONE, nothing else."""
 
 def _summarize_feedback_sync(feedback_text: str) -> str:
     return _replicate_run(
-        config.ANALYSIS_MODEL,
+        config.FAST_MODEL,
         {
             "system_prompt": _FEEDBACK_SUMMARY_SYSTEM,
             "prompt": feedback_text,
