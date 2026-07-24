@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import logging
 
 import replicate
@@ -431,6 +432,163 @@ async def summarize_feedback(feedback_text: str) -> str | None:
     if not result or result.upper() == "NONE":
         return None
     return result
+
+
+# ──────────────────────────────────────────────────────────
+#  Dynamic, generation-specific feedback questions
+# ──────────────────────────────────────────────────────────
+
+# Used only if question generation fails — generic but still usable.
+FALLBACK_FEEDBACK_QUESTIONS: list[dict] = [
+    {
+        "text": "Как вам в целом результат?",
+        "options": [
+            {"label": "👍 Нравится", "note": None},
+            {"label": "😐 Так себе", "note": None},
+            {"label": "👎 Не понравилось", "note": None},
+        ],
+    },
+    {
+        "text": "Поверхность/фон подошли к трусам?",
+        "options": [
+            {"label": "✅ Отлично подошли", "note": None},
+            {"label": "😐 Нормально", "note": None},
+            {
+                "label": "❌ Не подошли",
+                "note": "Be more careful matching the surface/background to the panties' fabric — "
+                        "a recent generation's surface didn't suit it well.",
+            },
+        ],
+    },
+    {
+        "text": "Реквизита/декора было...",
+        "options": [
+            {"label": "👌 В самый раз", "note": None},
+            {"label": "🔺 Слишком много", "note": "Prefer fewer props and a more minimal amount of decor in compositions."},
+            {"label": "🔻 Хотелось бы больше", "note": "Feel free to add more decorative elements/props to compositions."},
+        ],
+    },
+    {
+        "text": "Цвета в кадре сочетались хорошо?",
+        "options": [
+            {"label": "✅ Хорошо сочетались", "note": None},
+            {
+                "label": "😐 Слились в один тон",
+                "note": "Ensure stronger contrast between the panties color and the surrounding palette — "
+                        "avoid colors blending into one tone.",
+            },
+            {
+                "label": "❌ Конфликтовали",
+                "note": "Choose calmer, more harmonious color palettes — avoid colors that visually clash with the panties.",
+            },
+        ],
+    },
+]
+
+
+def _feedback_questions_system() -> str:
+    return """You are designing a short post-generation feedback survey for an AI product-photography bot
+for a lingerie brand. Below is a description of what was just generated for a user.
+
+Based on the SPECIFIC things that were actually generated (style used, composition, surface, colors, props/
+extras added, number of panties shown), write 4 or 5 SPECIFIC feedback questions — NOT generic ones like
+"did you like it?" or "rate 1-10". Each question should probe one particular real thing about THIS generation,
+so the answers are genuinely useful for improving future prompts. Examples of the kind of specificity wanted:
+if a colortype/palette style was used, ask specifically whether the color palette suited the panties; if an
+accessory/prop was added, ask specifically whether that prop worked; if several panties are shown, ask
+specifically whether they were all shown clearly and correctly; if a particular surface/setting was used
+(e.g. wooden table, marble, fur blanket), ask specifically whether that setting worked.
+
+Return STRICT JSON only — no markdown code fences, no commentary before or after — in exactly this shape:
+{
+  "questions": [
+    {
+      "text": "<short question in Russian, max ~12 words>",
+      "options": [
+        {"label": "<short button label in Russian, max ~4 words>", "note": null}
+      ]
+    }
+  ]
+}
+
+Rules:
+- Exactly 4 or 5 questions.
+- Each question has 2 or 3 options.
+- At least one option per question must be positive/neutral with "note": null.
+- "note" must be null UNLESS the option indicates something should change for future generations — in that
+  case "note" is a short, generalized, actionable instruction IN ENGLISH for a prompt-writing AI (max 15
+  words), e.g. "Ensure the wooden surface tone doesn't clash with pastel-colored panties."
+- Write "text" and "label" values in Russian, natural and easy to answer with one tap.
+- Do not ask about anything not related to this specific generation (no generic "overall rating" question)."""
+
+
+def _generate_feedback_questions_sync(context_text: str) -> list[dict]:
+    text = _replicate_run(
+        config.FAST_MODEL,
+        {
+            "system_prompt": _feedback_questions_system(),
+            "prompt": context_text,
+            "max_tokens": 1500,
+            "extended_thinking": False,
+        },
+    )
+
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+
+    data = json.loads(cleaned)
+    questions = data["questions"]
+
+    validated = []
+    for q in questions:
+        opts = [
+            {"label": str(o["label"]), "note": (str(o["note"]) if o.get("note") else None)}
+            for o in q["options"]
+            if o.get("label")
+        ]
+        if q.get("text") and 2 <= len(opts) <= 3:
+            validated.append({"text": str(q["text"]), "options": opts})
+
+    if not (4 <= len(validated) <= 5):
+        raise ValueError(f"Expected 4-5 valid questions, got {len(validated)}")
+
+    return validated
+
+
+async def generate_feedback_questions(context: dict) -> list[dict]:
+    """
+    Generate 4-5 feedback questions tailored to what was actually generated in this run.
+    Falls back to a generic fixed set if generation or parsing fails.
+    """
+    flow = context.get("flow", "reference")
+    style_name = context.get("style_name")
+    extras = context.get("extras")
+    prompts = context.get("prompts", [])
+
+    flow_description = {
+        "reference": "generated using a user-provided reference photo (2 image variants were produced)",
+        "describe": "generated from the user's own text description of the desired style (1 image variant)",
+        "style": f"generated using the preset style '{style_name}' (2 image variants were produced)",
+    }.get(flow, "generated by the bot")
+
+    extras_line = f"Extra prop/element added to the frame: {extras}" if extras else "No extra prop was added."
+    prompts_text = "\n---\n".join(prompts)[:4000]
+
+    context_text = (
+        f"Flow: {flow_description}\n"
+        f"{extras_line}\n\n"
+        f"Generated prompt(s) sent to the image model:\n{prompts_text}"
+    )
+
+    try:
+        return await asyncio.to_thread(_generate_feedback_questions_sync, context_text)
+    except Exception as exc:
+        logger.error("Dynamic feedback question generation failed, using fallback: %s", exc)
+        return FALLBACK_FEEDBACK_QUESTIONS
 
 
 # ──────────────────────────────────────────────────────────

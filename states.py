@@ -30,9 +30,6 @@ class StyleFlow(StatesGroup):
 
 class FeedbackFlow(StatesGroup):
     """Shared post-generation feedback step, across all flows — a short guided Q&A."""
-    waiting_consent = State()   # asking whether the user wants to answer a few quick questions
-    waiting_q1 = State()        # overall impression
-    waiting_q2 = State()        # did the surface/background suit the panties
-    waiting_q3 = State()        # amount of props/decor
-    waiting_q4 = State()        # did the colors work together
-    waiting_comment = State()   # optional free-text comment
+    waiting_consent = State()           # asking whether the user wants to answer a few quick questions
+    waiting_dynamic_question = State()  # walking through the AI-generated, generation-specific questions
+    waiting_comment = State()           # optional free-text comment

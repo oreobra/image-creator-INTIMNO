@@ -135,10 +135,7 @@ FEEDBACK_CONSENT_TEXT = (
     "Не против ответить на пару быстрых вопросов? Это займёт 30 секунд и поможет мне "
     "подбирать удачнее в следующий раз 🙂"
 )
-FEEDBACK_Q1_TEXT = "1/4 — Как вам в целом результат?"
-FEEDBACK_Q2_TEXT = "2/4 — Поверхность/фон подошли к трусам?"
-FEEDBACK_Q3_TEXT = "3/4 — Реквизита/декора было..."
-FEEDBACK_Q4_TEXT = "4/4 — Цвета в кадре сочетались хорошо?"
+FEEDBACK_GENERATING_TEXT = "Секунду, подбираю вопросы под эту генерацию..."
 FEEDBACK_COMMENT_TEXT = "Хочешь добавить что-то ещё словами? Можно пропустить."
 FEEDBACK_THANKS_TEXT = "Спасибо за ответы! Учту это в следующих генерациях 🙏\n\nХочешь ещё? /reference, /describe или /style"
 FEEDBACK_DECLINED_TEXT = "Хорошо! Хочешь ещё? /reference, /describe или /style"
@@ -198,43 +195,21 @@ FEEDBACK_CONSENT_KEYBOARD = InlineKeyboardMarkup(
     ]]
 )
 
-FEEDBACK_Q1_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[[
-        InlineKeyboardButton(text="👍 Нравится", callback_data="fb_q1_like"),
-        InlineKeyboardButton(text="😐 Так себе", callback_data="fb_q1_meh"),
-        InlineKeyboardButton(text="👎 Не понравилось", callback_data="fb_q1_dislike"),
-    ]]
-)
-
-FEEDBACK_Q2_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Отлично подошли", callback_data="fb_q2_good"),
-        InlineKeyboardButton(text="😐 Нормально", callback_data="fb_q2_ok"),
-        InlineKeyboardButton(text="❌ Не подошли", callback_data="fb_q2_bad"),
-    ]]
-)
-
-FEEDBACK_Q3_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[[
-        InlineKeyboardButton(text="👌 В самый раз", callback_data="fb_q3_right"),
-        InlineKeyboardButton(text="🔺 Слишком много", callback_data="fb_q3_much"),
-        InlineKeyboardButton(text="🔻 Хотелось бы больше", callback_data="fb_q3_less"),
-    ]]
-)
-
-FEEDBACK_Q4_KEYBOARD = InlineKeyboardMarkup(
-    inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Хорошо сочетались", callback_data="fb_q4_good"),
-        InlineKeyboardButton(text="😐 Слились в один тон", callback_data="fb_q4_blend"),
-        InlineKeyboardButton(text="❌ Конфликтовали", callback_data="fb_q4_clash"),
-    ]]
-)
-
 FEEDBACK_COMMENT_KEYBOARD = InlineKeyboardMarkup(
     inline_keyboard=[[
         InlineKeyboardButton(text="Пропустить", callback_data="fb_comment_skip"),
     ]]
 )
+
+
+def _build_feedback_question_keyboard(question_index: int, options: list[dict]) -> InlineKeyboardMarkup:
+    """One button per row — dynamic question option labels can be longer than the fixed ones were."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=opt["label"], callback_data=f"fbdyn:{question_index}:{opt_idx}")]
+            for opt_idx, opt in enumerate(options)
+        ]
+    )
 
 # ──────────────────────────────────────────────────────────
 #  Filter: photo or image document
@@ -288,6 +263,7 @@ async def show_extras_menu(
     panties_file_ids: list[str],
     prompts: list[str],
     panties_analysis: str,
+    style_name: str | None = None,
 ) -> None:
     """
     Save generation data to state and show the extras selection menu.
@@ -303,6 +279,7 @@ async def show_extras_menu(
         panties_file_ids=panties_file_ids,
         prompts=prompts,
         panties_analysis=panties_analysis,
+        style_name=style_name,
     )
     await state.set_state(_extras_state[flow])
     await message.answer(EXTRAS_QUESTION_TEXT, reply_markup=EXTRAS_KEYBOARD)
@@ -322,6 +299,13 @@ async def run_generation(
     panties_file_ids: list[str] = data["panties_file_ids"]
     base_prompts: list[str] = data["prompts"]
     total = len(base_prompts)
+
+    feedback_context = {
+        "flow": data.get("flow", "reference"),
+        "style_name": data.get("style_name"),
+        "extras": extras,
+        "prompts": base_prompts,
+    }
 
     gen_msg = await target.answer(WAITING_TEXT)
 
@@ -374,6 +358,7 @@ async def run_generation(
 
     if success > 0:
         await state.set_state(FeedbackFlow.waiting_consent)
+        await state.update_data(feedback_context=feedback_context)
         await target.answer(FEEDBACK_CONSENT_TEXT, reply_markup=FEEDBACK_CONSENT_KEYBOARD)
 
 
@@ -613,7 +598,7 @@ async def style_chosen(callback: CallbackQuery, state: FSMContext) -> None:
             f"✅ Промпты в стиле «{style_name}»:\n\n{numbered}",
             parse_mode="HTML",
         )
-        await show_extras_menu(callback.message, state, "style", panties_file_ids, prompts, panties_analysis)
+        await show_extras_menu(callback.message, state, "style", panties_file_ids, prompts, panties_analysis, style_name)
 
     except Exception as exc:
         logging.error("Style prompt generation failed: %s", exc)
@@ -770,11 +755,26 @@ async def extras_unexpected(message: Message) -> None:
 
 _FEEDBACK_BUTTON_STATES = StateFilter(
     FeedbackFlow.waiting_consent,
-    FeedbackFlow.waiting_q1,
-    FeedbackFlow.waiting_q2,
-    FeedbackFlow.waiting_q3,
-    FeedbackFlow.waiting_q4,
+    FeedbackFlow.waiting_dynamic_question,
 )
+
+
+async def _ask_feedback_question(message: Message, state: FSMContext) -> None:
+    """Show the current question in the walk, or move on to the optional comment step if done."""
+    data = await state.get_data()
+    questions: list[dict] = data.get("feedback_questions", [])
+    index: int = data.get("feedback_index", 0)
+
+    if index >= len(questions):
+        await message.answer(FEEDBACK_COMMENT_TEXT, reply_markup=FEEDBACK_COMMENT_KEYBOARD)
+        await state.set_state(FeedbackFlow.waiting_comment)
+        return
+
+    question = questions[index]
+    await message.answer(
+        question["text"],
+        reply_markup=_build_feedback_question_keyboard(index, question["options"]),
+    )
 
 
 async def feedback_consent(callback: CallbackQuery, state: FSMContext) -> None:
@@ -787,58 +787,42 @@ async def feedback_consent(callback: CallbackQuery, state: FSMContext) -> None:
         return
 
     await callback.message.edit_text("Отлично, начнём! 🙂")
-    await callback.message.answer(FEEDBACK_Q1_TEXT, reply_markup=FEEDBACK_Q1_KEYBOARD)
-    await state.set_state(FeedbackFlow.waiting_q1)
+    data = await state.get_data()
+    context = data.get("feedback_context", {})
+
+    gen_msg = await callback.message.answer(FEEDBACK_GENERATING_TEXT)
+    questions = await services.generate_feedback_questions(context)
+    await gen_msg.delete()
+
+    await state.update_data(feedback_questions=questions, feedback_index=0)
+    await state.set_state(FeedbackFlow.waiting_dynamic_question)
+    await _ask_feedback_question(callback.message, state)
 
 
-async def feedback_q1(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: overall impression — informational only, no note stored."""
+async def feedback_dynamic_answer(callback: CallbackQuery, state: FSMContext) -> None:
+    """Callback: user answered one of the dynamically generated questions."""
     await callback.answer()
-    await callback.message.edit_text("Записала ✍️")
-    await callback.message.answer(FEEDBACK_Q2_TEXT, reply_markup=FEEDBACK_Q2_KEYBOARD)
-    await state.set_state(FeedbackFlow.waiting_q2)
 
+    try:
+        _, q_idx_str, opt_idx_str = callback.data.split(":")
+        q_idx, opt_idx = int(q_idx_str), int(opt_idx_str)
+    except (ValueError, AttributeError):
+        return
 
-async def feedback_q2(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: did the surface/background suit the panties."""
-    await callback.answer()
-    if callback.data == "fb_q2_bad":
-        await notes.add_note(
-            "Be more careful matching the surface/background to the panties' fabric — "
-            "a recent generation's surface didn't suit it well."
-        )
-    await callback.message.edit_text("Записала ✍️")
-    await callback.message.answer(FEEDBACK_Q3_TEXT, reply_markup=FEEDBACK_Q3_KEYBOARD)
-    await state.set_state(FeedbackFlow.waiting_q3)
+    data = await state.get_data()
+    questions: list[dict] = data.get("feedback_questions", [])
+    if q_idx >= len(questions) or opt_idx >= len(questions[q_idx]["options"]):
+        return
 
+    option = questions[q_idx]["options"][opt_idx]
+    note = option.get("note")
+    if note:
+        await notes.add_note(note)
 
-async def feedback_q3(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: amount of props/decor."""
-    await callback.answer()
-    if callback.data == "fb_q3_much":
-        await notes.add_note("Prefer fewer props and a more minimal amount of decor in compositions.")
-    elif callback.data == "fb_q3_less":
-        await notes.add_note("Feel free to add more decorative elements/props to compositions.")
-    await callback.message.edit_text("Записала ✍️")
-    await callback.message.answer(FEEDBACK_Q4_TEXT, reply_markup=FEEDBACK_Q4_KEYBOARD)
-    await state.set_state(FeedbackFlow.waiting_q4)
+    await callback.message.edit_text(f"{questions[q_idx]['text']}\n\n✅ {option['label']}")
 
-
-async def feedback_q4(callback: CallbackQuery, state: FSMContext) -> None:
-    """Callback: did the colors work together."""
-    await callback.answer()
-    if callback.data == "fb_q4_blend":
-        await notes.add_note(
-            "Ensure stronger contrast between the panties color and the surrounding palette — "
-            "avoid colors blending into one tone."
-        )
-    elif callback.data == "fb_q4_clash":
-        await notes.add_note(
-            "Choose calmer, more harmonious color palettes — avoid colors that visually clash with the panties."
-        )
-    await callback.message.edit_text("Записала ✍️")
-    await callback.message.answer(FEEDBACK_COMMENT_TEXT, reply_markup=FEEDBACK_COMMENT_KEYBOARD)
-    await state.set_state(FeedbackFlow.waiting_comment)
+    await state.update_data(feedback_index=q_idx + 1)
+    await _ask_feedback_question(callback.message, state)
 
 
 async def feedback_comment_skip(callback: CallbackQuery, state: FSMContext) -> None:
@@ -978,10 +962,7 @@ def register_handlers(dp: Dispatcher) -> None:
 
     # ── Feedback — guided Q&A (shared across all flows) ────
     dp.callback_query.register(feedback_consent, F.data.startswith("feedback_consent_"), FeedbackFlow.waiting_consent)
-    dp.callback_query.register(feedback_q1, F.data.startswith("fb_q1_"), FeedbackFlow.waiting_q1)
-    dp.callback_query.register(feedback_q2, F.data.startswith("fb_q2_"), FeedbackFlow.waiting_q2)
-    dp.callback_query.register(feedback_q3, F.data.startswith("fb_q3_"), FeedbackFlow.waiting_q3)
-    dp.callback_query.register(feedback_q4, F.data.startswith("fb_q4_"), FeedbackFlow.waiting_q4)
+    dp.callback_query.register(feedback_dynamic_answer, F.data.startswith("fbdyn:"), FeedbackFlow.waiting_dynamic_question)
     dp.callback_query.register(feedback_comment_skip, F.data == "fb_comment_skip", FeedbackFlow.waiting_comment)
     dp.message.register(feedback_comment_text, FeedbackFlow.waiting_comment, F.text)
     dp.message.register(feedback_comment_unexpected_image, FeedbackFlow.waiting_comment, _IMAGE_FILTER)
