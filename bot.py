@@ -72,7 +72,7 @@ HELP_TEXT = """📖 Как пользоваться ботом:
 🎁 ДОП. ЭЛЕМЕНТЫ
 ────────────────────
 После составления промпта бот предложит добавить в кадр:
-📇 Визитку · 📖 Журнал INTIMNO · 💍 Аксессуары в тон (цвету трусов) · или любой реквизит своими словами / фото
+📇 Визитку · 📖 Журнал INTIMNO · 💍 Аксессуары в тон (набор из 2-3 предметов) · или любой реквизит своими словами / фото
 
 ────────────────────
 💬 ОБРАТНАЯ СВЯЗЬ
@@ -125,7 +125,7 @@ EXTRAS_QUESTION_TEXT = (
     "🎁 Хочешь добавить что-то в кадр?\n\n"
     "📇 Визитка — маленькая визитка с брендом INTIMNO\n"
     "📖 Журнал INTIMNO — журнал с названием бренда\n"
-    "💍 Аксессуары в тон — украшение, подобранное под цвет трусов\n"
+    "💍 Аксессуары в тон — набор из 2-3 предметов, подобранных под цвет трусов\n"
     "✏️ Описать — любой реквизит своими словами\n"
     "🖼 Прислать фото — пришли фото реквизита\n\n"
     "Или нажми «Без добавок» — и я сразу запущу генерацию."
@@ -661,11 +661,11 @@ async def extras_chosen(callback: CallbackQuery, state: FSMContext) -> None:
 
     elif choice == "extras_accessories":
         await callback.answer()
-        await callback.message.edit_text("💍 Подбираю аксессуар в тон трусам...")
+        await callback.message.edit_text("💍 Подбираю реквизит в тон трусам...")
         try:
-            accessory = await services.suggest_color_matched_accessory(panties_analysis)
-            extras = f"with {accessory} placed in the composition"
-            await callback.message.answer(f"✅ Добавляю: «{accessory}» — запускаю!")
+            accessories = await services.suggest_color_matched_accessory(panties_analysis)
+            extras = f"with {accessories} placed in the composition"
+            await callback.message.answer(f"✅ Добавляю: «{accessories}» — запускаю!")
             await run_generation(callback.message, callback.bot, state, extras)
         except Exception as exc:
             logging.error("Color-matched accessory suggestion failed: %s", exc)

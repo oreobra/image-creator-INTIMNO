@@ -102,9 +102,10 @@ def _count_phrase(count: int) -> str:
 
 def _hard_rules_block(count: int) -> str:
     """
-    Non-negotiable rules about count/color/material preservation, injected into every
-    prompt-generation system prompt. This directly targets a real failure mode: the
-    generation model sometimes drops/adds panties or subtly recolors/re-textures them.
+    Non-negotiable rules about count/color/material preservation and prop density, injected into
+    every prompt-generation system prompt. This directly targets real failure modes: the generation
+    model sometimes drops/adds panties, subtly recolors/re-textures them, redraws trim/lace details,
+    or under/over-fills the composition with props.
     """
     phrase = _count_phrase(count)
     return f"""
@@ -113,13 +114,20 @@ NON-NEGOTIABLE RULES (apply to every one of the generated prompts):
   spell out the count in its own text, using the phrase "{phrase} from the attached image" (adapt grammar
   naturally, but the number {count} itself must appear as text in the prompt if count > 1).
 - Every generated prompt MUST depict all {count} of them — never fewer, never more.
-- Do NOT recolor, re-tint, or alter the panties' color in any way.
-- Do NOT change, simplify, or omit the print/pattern of the panties.
+- Do NOT recolor, re-tint, or alter the panties' color, shade, or saturation in any way.
+- Do NOT change, simplify, redraw, or omit the print/pattern of the panties.
 - Do NOT change the fabric/material appearance of the panties (e.g. lace must stay lace, satin must stay satin).
-- The panties themselves must be reproduced pixel-faithful to the attached image — only the surroundings
-  (surface, props, lighting, background) are creative territory, never the garment itself.
+- Do NOT reinterpret or redraw fine construction details — lace trim, ruffles, edging, straps, seams and the
+  overall silhouette must match the attached image exactly. Explicitly instruct in each prompt that these
+  details (e.g. "the lace trim and ruffle detailing exactly as shown in the attached image") must be preserved
+  faithfully, not stylized or approximated.
+- The panties themselves must be reproduced pixel-faithful to the attached image, like a real product photo of
+  that exact garment — only the surroundings (surface, props, lighting, background) are creative territory,
+  never the garment itself.
 - Unless the user's style/reference clearly calls for something else, include a warm, beautiful natural white
   sunlight as the default lighting mood ("beautiful warm white sunlight, soft natural shadows") in each prompt.
+- Prop density default: unless the STYLE DIRECTION above explicitly calls for more, use only 1-2 supporting
+  props per prompt — keep the composition clean and uncluttered, not overcrowded.
 """
 
 
@@ -327,24 +335,29 @@ async def generate_style_prompts(style_key: str, panties_analysis: str, count: i
 
 
 # ──────────────────────────────────────────────────────────
-#  Color-matched accessory suggestion (extras: "💍 Аксессуары в тон")
+#  Color-matched accessory combo (extras: "💍 Аксессуары в тон")
 # ──────────────────────────────────────────────────────────
 
-_COLOR_ACCESSORY_SYSTEM = """Based on the fabric/color analysis of a pair of panties below, suggest ONE small,
-tasteful jewelry or accessory item (e.g. a necklace, ring, bracelet, hair clip, brooch, anklet, hair pin,
-ribbon) that suits BOTH:
+_COLOR_ACCESSORY_SYSTEM = """Based on the fabric/color analysis of a pair of panties below, suggest a small
+coordinated SET of 2-3 different prop TYPES to place together in the frame as one styled vignette — NOT a
+single item. Good combinations look like: flowers + a magazine, jewelry + a small purse, a throw blanket +
+berries/fruit, pearls + a book, a candle + dried flowers. Pick items that make sense placed together, not
+random unrelated objects.
+
+The set as a whole must suit BOTH:
 1. Color — intentionally complements the panties WITHOUT exactly matching or clashing with them.
-2. Character/type — the accessory's own material and style should match the fabric's character, not just
-   its color. Delicate/soft fabrics (cotton, jersey, simple lace) call for softer, simpler accessories
-   (e.g. a thin ribbon, a small pearl, a delicate flower clip) — not heavy opulent pieces. Luxe fabrics
-   (silk, satin, fine lace) can carry more opulent accessories (e.g. gold or crystal jewelry). Sporty/
-   everyday fabrics call for something casual, not jewelry-store luxury.
+2. Character/type — the items' own material and style should match the fabric's character, not just color.
+   Delicate/soft fabrics (cotton, jersey, simple lace) call for softer, simpler items (ribbon, small flowers,
+   a delicate clip) — not heavy opulent pieces. Luxe fabrics (silk, satin, fine lace) can carry more opulent
+   items (gold or crystal jewelry, richly textured objects). Sporty/everyday fabrics call for something
+   casual, not jewelry-store luxury.
 
 PANTIES ANALYSIS:
 {panties_analysis}
 
-Format: 'a [color] [accessory]', 5-10 words max.
-Return ONLY the short phrase, nothing else."""
+Format: one short natural phrase listing all 2-3 items, e.g. "a small bouquet of blush roses and a glossy
+magazine" or "a gold bracelet, a small beige purse and a strand of pearls". Max 20 words.
+Return ONLY the phrase, nothing else."""
 
 
 def _suggest_color_accessory_sync(panties_analysis: str) -> str:
@@ -352,7 +365,7 @@ def _suggest_color_accessory_sync(panties_analysis: str) -> str:
         config.FAST_MODEL,
         {
             "system_prompt": _COLOR_ACCESSORY_SYSTEM.format(panties_analysis=panties_analysis),
-            "prompt": "Suggest one color-matched accessory.",
+            "prompt": "Suggest a coordinated set of 2-3 color-matched props.",
             "max_tokens": 1024,
             "extended_thinking": False,
         },
@@ -360,7 +373,7 @@ def _suggest_color_accessory_sync(panties_analysis: str) -> str:
 
 
 async def suggest_color_matched_accessory(panties_analysis: str) -> str:
-    """Suggest a short, color-complementary accessory description based on the panties analysis."""
+    """Suggest a short, color-complementary combo of 2-3 props based on the panties analysis."""
     return await asyncio.to_thread(_suggest_color_accessory_sync, panties_analysis)
 
 
