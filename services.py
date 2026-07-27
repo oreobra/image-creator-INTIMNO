@@ -137,6 +137,14 @@ The panties must be reproduced as a faithful copy of the attached image — like
 EXACT garment. Only the surroundings (surface, background, props, lighting) are creative territory. The garment
 itself is NEVER creative territory.
 
+WHAT TO WRITE ABOUT THE GARMENT IN THE PROMPT:
+- Mention ONLY: the count ({count}) and the fabric/material (e.g. "microfiber", "satin", "cotton", "mesh").
+- Do NOT describe the color(s) of the panties in the prompt — the image model already sees the attached photo.
+- Do NOT list or describe any prints, patterns, or graphics on the panties in the prompt text.
+- Do NOT enumerate individual pieces by their color or pattern (e.g. never write "the black one", "the red one",
+  "the one with hearts", "the lip-print piece" etc.).
+- Keep the garment reference simple: "{phrase} from the attached image" — let the photo speak for itself.
+
 WHAT IS ALLOWED (improving presentation only):
 - Better lighting quality, more flattering light direction, softer shadows
 - Cleaner, more premium surface / background
