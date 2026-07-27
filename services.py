@@ -102,32 +102,51 @@ def _count_phrase(count: int) -> str:
 
 def _hard_rules_block(count: int) -> str:
     """
-    Non-negotiable rules about count/color/material preservation and prop density, injected into
+    Non-negotiable rules about count/color/material/shape preservation and prop density, injected into
     every prompt-generation system prompt. This directly targets real failure modes: the generation
-    model sometimes drops/adds panties, subtly recolors/re-textures them, redraws trim/lace details,
-    or under/over-fills the composition with props.
+    model sometimes drops/adds panties, subtly recolors/re-textures them, changes the cut/silhouette,
+    adds details not present in the original, or under/over-fills the composition with props.
     """
     phrase = _count_phrase(count)
     return f"""
-NON-NEGOTIABLE RULES (apply to every one of the generated prompts):
-- The attached image shows EXACTLY {count} pair(s) of panties. Every single generated prompt MUST explicitly
-  spell out the count in its own text, using the phrase "{phrase} from the attached image" (adapt grammar
-  naturally, but the number {count} itself must appear as text in the prompt if count > 1).
-- Every generated prompt MUST depict all {count} of them — never fewer, never more.
-- Do NOT recolor, re-tint, or alter the panties' color, shade, or saturation in any way.
-- Do NOT change, simplify, redraw, or omit the print/pattern of the panties.
-- Do NOT change the fabric/material appearance of the panties (e.g. lace must stay lace, satin must stay satin).
-- Do NOT reinterpret or redraw fine construction details — lace trim, ruffles, edging, straps, seams and the
-  overall silhouette must match the attached image exactly. Explicitly instruct in each prompt that these
-  details (e.g. "the lace trim and ruffle detailing exactly as shown in the attached image") must be preserved
-  faithfully, not stylized or approximated.
-- The panties themselves must be reproduced pixel-faithful to the attached image, like a real product photo of
-  that exact garment — only the surroundings (surface, props, lighting, background) are creative territory,
-  never the garment itself.
-- Unless the user's style/reference clearly calls for something else, include a warm, beautiful natural white
-  sunlight as the default lighting mood ("beautiful warm white sunlight, soft natural shadows") in each prompt.
-- Prop density default: unless the STYLE DIRECTION above explicitly calls for more, use only 1-2 supporting
-  props per prompt — keep the composition clean and uncluttered, not overcrowded.
+ABSOLUTE NON-NEGOTIABLE RULES — EVERY generated prompt MUST follow ALL of these without exception:
+
+GARMENT COUNT:
+- The attached image shows EXACTLY {count} pair(s) of panties. Every generated prompt MUST explicitly
+  spell out the count, using the phrase "{phrase} from the attached image" (adapt grammar naturally,
+  but the number {count} itself must appear as text in the prompt if count > 1).
+- Every prompt MUST depict all {count} of them — NEVER fewer, NEVER more. Do not remove or hide any.
+
+GARMENT IDENTITY — STRICTLY FORBIDDEN to change any of the following:
+- SHAPE / CUT / SILHOUETTE: The cut of the panties (thong, string, bikini, brief, brazilian, boyshort, etc.)
+  MUST remain exactly as in the attached image. NEVER change the silhouette. NEVER widen, narrow, extend
+  or reshape any part of the garment.
+- FABRIC / MATERIAL: The material MUST stay identical (lace stays lace, cotton stays cotton, satin stays satin,
+  mesh stays mesh, etc.). NEVER substitute or blend one material with another.
+- DETAILS — DO NOT ADD WHAT IS NOT THERE: If the original has no lace — do not add lace. If there is no ruffle —
+  do not add ruffles. If there is no print — do not add a print. Only reproduce details that are VISIBLE in the
+  attached image; do not invent, stylize, or approximate any construction detail.
+- COLOR / TONE: Do NOT recolor, re-tint, or alter the panties' color, shade, or saturation in any way.
+- PRINT / PATTERN: Do NOT change, simplify, redraw, or omit any print or pattern.
+- FINE CONSTRUCTION: Lace trim, ruffles, edging, straps, seams must match the attached image exactly —
+  preserved faithfully, never stylized or redrawn.
+
+The panties must be reproduced as a faithful copy of the attached image — like a studio product photo of that
+EXACT garment. Only the surroundings (surface, background, props, lighting) are creative territory. The garment
+itself is NEVER creative territory.
+
+WHAT IS ALLOWED (improving presentation only):
+- Better lighting quality, more flattering light direction, softer shadows
+- Cleaner, more premium surface / background
+- Higher apparent image quality and sharpness
+- Different arrangement / layout of the same garment on the surface
+- Adding props / styling elements around the garment (never touching or replacing the garment itself)
+
+LIGHTING DEFAULT: Unless the style/reference clearly calls for something else, include warm beautiful natural
+white sunlight ("beautiful warm white sunlight, soft natural shadows") in each prompt.
+
+PROP DENSITY: Unless the style direction explicitly calls for more, use only 1-2 supporting props per prompt —
+keep the composition clean and uncluttered, not overcrowded.
 """
 
 
