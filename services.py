@@ -121,15 +121,17 @@ GARMENT IDENTITY — STRICTLY FORBIDDEN to change any of the following:
 - SHAPE / CUT / SILHOUETTE: The cut of the panties (thong, string, bikini, brief, brazilian, boyshort, etc.)
   MUST remain exactly as in the attached image. NEVER change the silhouette. NEVER widen, narrow, extend
   or reshape any part of the garment.
-- FABRIC / MATERIAL: The material MUST stay identical (lace stays lace, cotton stays cotton, satin stays satin,
-  mesh stays mesh, etc.). NEVER substitute or blend one material with another.
-- DETAILS — DO NOT ADD WHAT IS NOT THERE: If the original has no lace — do not add lace. If there is no ruffle —
-  do not add ruffles. If there is no print — do not add a print. Only reproduce details that are VISIBLE in the
-  attached image; do not invent, stylize, or approximate any construction detail.
+- FABRIC / MATERIAL: The material MUST stay identical. NEVER substitute or blend one material with another.
+- DETAILS — ONLY DESCRIBE WHAT IS ACTUALLY VISIBLE IN THE IMAGE: Do NOT invent, add, or imply any
+  construction detail that is not clearly present in the attached photo.
+  CRITICAL EXAMPLES: If the panties have NO lace — NEVER write "lace" or "lace trim" anywhere in the prompt.
+  If there are NO ruffles — NEVER write "ruffles". If there is NO print — NEVER write "print".
+  Only describe details that are GENUINELY and CLEARLY visible in the photo. When in doubt — omit.
 - COLOR / TONE: Do NOT recolor, re-tint, or alter the panties' color, shade, or saturation in any way.
-- PRINT / PATTERN: Do NOT change, simplify, redraw, or omit any print or pattern.
-- FINE CONSTRUCTION: Lace trim, ruffles, edging, straps, seams must match the attached image exactly —
-  preserved faithfully, never stylized or redrawn.
+- PRINT / PATTERN: Do NOT change, simplify, redraw, or omit any print or pattern that IS present.
+- CONSTRUCTION DETAILS: All visible construction elements (straps, seams, waistband, any trim actually
+  present in the photo) must match the attached image exactly — never stylized or redrawn. But NEVER add
+  any element that is not visible in the photo.
 
 The panties must be reproduced as a faithful copy of the attached image — like a studio product photo of that
 EXACT garment. Only the surroundings (surface, background, props, lighting) are creative territory. The garment
@@ -141,6 +143,13 @@ WHAT IS ALLOWED (improving presentation only):
 - Higher apparent image quality and sharpness
 - Different arrangement / layout of the same garment on the surface
 - Adding props / styling elements around the garment (never touching or replacing the garment itself)
+
+COMPOSITION LAYOUT (for {count} piece(s)):
+- When there are multiple panties, they MUST be grouped closely together as one cohesive composition —
+  arranged in a fan, cascade, overlapping stack, or tight row. They must read as ONE styled group, NOT
+  scattered to different corners or edges of the frame. Vary the arrangement style between prompts
+  (fan vs row vs cascade vs gentle overlap), but always keep the group TIGHT and UNIFIED in the center
+  of the frame.
 
 LIGHTING DEFAULT: Unless the style/reference clearly calls for something else, include warm beautiful natural
 white sunlight ("beautiful warm white sunlight, soft natural shadows") in each prompt.
