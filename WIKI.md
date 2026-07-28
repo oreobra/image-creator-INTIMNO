@@ -224,7 +224,26 @@ Claude теперь составляет 2 разных промпта по од
 | `services.py` | `generate_style_prompts()` — как и в исходной версии, отдаёт **3 варианта** на стиль, но теперь промпт свободный (не жёсткий шаблон) и учитывает анализ материала/цвета трусов + заметки из фидбэка. Также добавлена `suggest_color_matched_accessory()` — короткое предложение аксессуара в тон, на основе анализа трусов (без отдельного фото). |
 | `states.py` | Возвращён `StyleFlow` (панти → анализ → выбор стиля → допэлементы). |
 | `bot.py` | Команда `/style`: фото трусов → анализ материала/цвета (как в остальных функциях) → выбор из 5 стилей кнопками → 3 промпта → допэлементы. В допэлементы добавлена кнопка «💍 Аксессуары в тон». |
-| `bot.py`, `states.py` | Фидбэк переделан в гид-анкету: сначала бот спрашивает согласие («Не против ответить на пару быстрых вопросов?..» / Да, давай / В другой раз), затем — если согласие получено — 4 коротких вопроса кнопками (общее впечатление, подошла ли поверхность, было ли реквизита в меру, сочетались ли цвета) + необязательный комментарий текстом. Ответы на конкретные вопросы конвертируются в заметки напрямую (без лишнего обращения к Claude), только свободный комментарий по-прежнему сжимается моделью. |
+| `bot.py`, `states.py` | Фидбэк переделан в гид-анкету: сначала бот спрашивает согласие («Не против ответить на пару быстрых вопросов?» / Да, давай / В другой раз), затем — если согласие получено — 4 коротких динамических вопроса кнопками + необязательный комментарий текстом. Ответы на конкретные вопросы конвертируются в заметки напрямую (без лишнего обращения к Claude), только свободный комментарий по-прежнему сжимается моделью. |
+
+---
+
+### Этап 11 — Строгая верность гарнмента (июль 2026)
+
+**Проблемы по результатам тестирования:**
+- Бот менял трусы в генерации — менял фасон/силуэт, добавлял кружево туда где его нет, менял материал
+- Бот описывал цвет и принт трусов в промпте, вместо того чтобы дать модели самостоятельно рассмотреть фото
+- При нескольких трусах — размещал их по углам кадра вместо компактной группы
+
+**Решение:** переработан блок `_hard_rules_block()` в `services.py`.
+
+| Правило | Суть |
+|---------|------|
+| SHAPE / CUT / SILHOUETTE | Фасон (стринг, бикини, трусики...) MUST оставаться как на фото |
+| FABRIC / MATERIAL | Материал MUST оставаться идентичным |
+| DO NOT ADD WHAT IS NOT THERE | Если на фото нет кружева — никогда не пишем «lace» в промпте |
+| Цвет/принт не описываем | В промпте упоминаем только количество + материал. Цвет и принты не описываем — модель видит фото |
+| COMPOSITION LAYOUT | Несколько трусов — обязательно компактной группой (веер, каскад, ряд), не по углам |
 
 ---
 
@@ -307,58 +326,84 @@ bot-for-images/
 
 `github.com/oreobra/image-creator-INTIMNO`
 
-### SSH-ключи
+### Ветки
 
-При деплое были созданы два SSH-ключа:
-- **Mac → GitHub:** ключ сгенерирован на Mac, добавлен в GitHub Settings
-- **Сервер → GitHub:** ключ сгенерирован на сервере командой `ssh-keygen`, добавлен в GitHub Settings
+| Ветка | Статус | Описание |
+|-------|--------|----------|
+| `feature/panties-analysis-feedback-v2` | ✅ **Активная (на сервере)** | Анализ трусов, 5 стилей, Цветотип, фидбэк, строгое сохранение гарнмента |
+| `feature/multi-panties-images` | 📦 В архиве | Мультизагрузка фото трусов (вошла в feature-ветку выше) |
+| `main` | 📦 Устарел | Старая базовая версия, не отражает актуальный код |
 
-### Первый деплой на сервер
+> **Важно:** все изменения ведутся в `feature/panties-analysis-feedback-v2`. Ветка `main` не обновляется.
+
+### Сервер
+
+- **Хост**: `zbbodhuzwo`
+- **SSH**: `ssh oreobra@zbbodhuzwo`
+- **Директория бота**: `~/bot` (`/home/oreobra/bot`)
+- **Запуск**: прямой процесс `python bot.py` от root (без Docker и systemd)
+- **Логи**: `/home/oreobra/bot/bot.log`
+- **Токены**: хранятся в `~/bot/.env` — нигде больше
+
+### Первый деплой (один раз)
 
 ```bash
-# На сервере — один раз:
-ssh-keygen -t ed25519 -C "server" -f ~/.ssh/id_ed25519 -N ""
-# добавить публичный ключ в github.com/settings/ssh/new
-
+ssh oreobra@zbbodhuzwo
 git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
 cd bot
-
-nano .env          # вставить TELEGRAM_TOKEN и REPLICATE_API_TOKEN
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-newgrp docker
-docker compose up -d
+git checkout feature/panties-analysis-feedback-v2
+nano .env     # вставить TELEGRAM_TOKEN и REPLICATE_API_TOKEN
+pip install -r requirements.txt
+sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
 ```
 
 ### Проверка работы
 
 ```bash
-docker compose logs -f    # логи в реальном времени
+ps aux | grep bot.py            # смотреть PID
+sudo tail -f /home/oreobra/bot/bot.log   # логи в реальном времени
 ```
 
 ---
 
 ## 8. РАБОЧИЙ ЦИКЛ ОБНОВЛЕНИЙ
 
-Всё редактирование — на Mac (в Claude Code), не на сервере.
+Всё редактирование — на Mac (в Antigravity), не на сервере.
 
 ```
 1. Меняем код на Mac
-2. git add / git commit / git push → уходит на GitHub
-3. На сервере:
-   cd bot && git pull && docker compose up -d --build
+2. git add / git commit / git push origin feature/panties-analysis-feedback-v2
+3. SSH на сервер:
+   cd ~/bot
+   git pull origin feature/panties-analysis-feedback-v2
+   ps aux | grep bot.py                    ← смотрим PID
+   sudo kill <PID>
+   sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+   ps aux | grep bot.py                    ← проверяем новый PID
 ```
 
-### Полезные команды на сервере
+### Если сервер упал — что делать
+
+Всё необходимое есть на GitHub. Нужно пересоздать только `.env` с токенами (они не хранятся в репозитории!):
 
 ```bash
-docker compose logs -f          # смотреть логи
-docker compose restart          # перезапустить без пересборки
-docker compose up -d --build    # пересобрать и перезапустить (после обновлений)
-docker compose down             # остановить
-exit                            # выйти из SSH-сессии
+git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
+cd bot
+git checkout feature/panties-analysis-feedback-v2
+nano .env    # TELEGRAM_TOKEN и REPLICATE_API_TOKEN
+pip install -r requirements.txt
+sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+```
+
+### Полезные команды
+
+```bash
+ps aux | grep bot.py                         # найти PID текущего процесса
+sudo tail -f /home/oreobra/bot/bot.log       # логи в реальном времени
+git log --oneline -10                        # последние коммиты
+git branch --show-current                    # проверить текущую ветку
 ```
 
 ---
 
-*Документ составлен: апрель 2026*
+*Документ обновлён: июль 2026*

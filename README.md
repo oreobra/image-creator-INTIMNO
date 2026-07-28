@@ -1,6 +1,10 @@
 # image creator | INTIMNO Bot
 
-Telegram-бот для генерации профессиональных фотографий белья через NanaBanana Pro (Replicate).
+Telegram-бот для генерации профессиональных product-фотографий женского белья (трусы) для бренда **INTIMNO**.
+
+> **Активная ветка на сервере:** `feature/panties-analysis-feedback-v2`  
+> **Сервер:** `zbbodhuzwo` (SSH: `oreobra@zbbodhuzwo`), директория `~/bot`  
+> **Запуск:** прямой процесс `python bot.py` от root (без Docker)
 
 ---
 
@@ -9,13 +13,15 @@ Telegram-бот для генерации профессиональных фо�
 | Команда | Описание | Результат |
 |---------|----------|-----------|
 | `/reference` | Пользователь присылает референс-фото → бот анализирует стиль через Claude → пользователь присылает фото трусов (одно или несколько) → генерация | 2 PNG-файла |
-| `/style` | Пользователь присылает фото трусов (одно или несколько) → выбирает стиль из 4 → Claude генерирует 3 уникальных промпта → генерация | 3 PNG-файла |
+| `/style` | Пользователь присылает фото трусов → анализ материала/цвета → выбирает стиль из **5** → Claude генерирует 2 уникальных промпта → генерация | 2 PNG-файла |
 | `/describe` | Пользователь описывает стиль текстом → Claude составляет промпт → пользователь присылает фото трусов (одно или несколько) → генерация | 1 PNG-файл |
-| `/styles` | Описание всех 4 стилей | — |
+| `/styles` | Описание всех 5 стилей | — |
 | `/help` | Подробная справка | — |
 | `/cancel` | Отменить текущее действие | — |
 
-**Доп. элементы** — после получения фото трусов в любом из flow бот предлагает добавить в кадр: визитку INTIMNO, журнал INTIMNO, любой реквизит словами или фото.
+**Доп. элементы** — после получения фото трусов в любом из flow бот предлагает добавить в кадр: визитку INTIMNO, журнал INTIMNO, аксессуары в тон, любой реквизит словами или фото.
+
+**Фидбэк** — после каждой генерации бот предлагает ответить на 4–5 динамических вопросов кнопками. Ответы сохраняются в `feedback_notes.json` и учитываются в будущих генерациях.
 
 ### Стили (/style)
 
@@ -23,6 +29,7 @@ Telegram-бот для генерации профессиональных фо�
 - **🌑 Тёмный** — тёмные фоны, свечи, парфюм, контрастный свет, luxury
 - **💎 Rich** — белый шёлк / мрамор / бархат, золотые аксессуары, журнал INTIMNO
 - **🎲 Смешанное** — разные атмосферы, неожиданные сочетания
+- **🎨 Цветотип** — вся палитра кадра осознанно строится вокруг оттенка трусов (аналоговая / комплементарная / монохромная гармония)
 
 ---
 
@@ -37,18 +44,35 @@ Telegram-бот для генерации профессиональных фо�
 
 ---
 
+## Ветки и деплой
+
+| Ветка | Статус | Описание |
+|-------|--------|----------|
+| `feature/panties-analysis-feedback-v2` | ✅ **На сервере** | Актуальная рабочая версия: анализ трусов, 5 стилей, Цветотип, фидбэк, строгое сохранение гарнмента |
+| `feature/multi-panties-images` | 📦 В архиве | Мультизагрузка фото трусов (вошла в feature-ветку выше) |
+| `main` | 📦 Устарел | Старая базовая версия без анализа и фидбэка |
+
+> **Важно:** `main` — не актуален. Работай с веткой `feature/panties-analysis-feedback-v2`.
+
+---
+
 ## Структура проекта
 
 ```
-bot-for-images/
-├── bot.py          # Главный файл: хэндлеры, FSM, запуск
-├── config.py       # Загрузка переменных из .env
-├── states.py       # Состояния FSM (ReferenceFlow, StyleFlow, DescribeFlow)
-├── prompts.py      # Шаблоны 4 стилей (STYLE_BLUEPRINTS) для динамической генерации промптов
-├── services.py     # Вызовы Replicate API (анализ + генерация)
-├── .env            # Секреты (не коммитить)
-├── .env.example    # Шаблон переменных
-└── requirements.txt
+bot/
+├── bot.py              # Все хэндлеры, FSM, тексты сообщений, запуск
+├── config.py           # Загрузка переменных из .env
+├── states.py           # Состояния FSM (ReferenceFlow, StyleFlow, DescribeFlow)
+├── styles.py           # 5 стилей (STYLE_BLUEPRINTS) для /style
+├── services.py         # Вся логика: анализ трусов, генерация промптов, генерация изображений, фидбэк
+├── notes.py            # Чтение/запись feedback_notes.json
+├── data/
+│   └── feedback_notes.json  # Накопленные заметки из фидбэка (не коммитить)
+├── .env                # Токены (не коммитить)
+├── .env.example        # Шаблон переменных
+├── requirements.txt
+├── Dockerfile          # Образ (не используется сейчас, оставлен про запас)
+└── docker-compose.yml  # Не используется сейчас, оставлен про запас
 ```
 
 ---
@@ -88,47 +112,69 @@ python bot.py
 
 ## Деплой на сервер (VPS)
 
-### Через systemd (рекомендуется)
+> Сейчас бот запущен напрямую через `nohup python bot.py` от root. Docker не используется.
 
-Создать файл `/etc/systemd/system/nanabanana.service`:
-
-```ini
-[Unit]
-Description=NanaBanana Telegram Bot
-After=network.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/bot-for-images
-ExecStart=/home/ubuntu/bot-for-images/venv/bin/python bot.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Затем:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable nanabanana
-sudo systemctl start nanabanana
-sudo systemctl status nanabanana   # проверить статус
-```
-
-Логи:
-```bash
-journalctl -u nanabanana -f
-```
-
-### Через screen (быстрый вариант)
+### Первый деплой (один раз)
 
 ```bash
-screen -S bot
-python bot.py
-# Ctrl+A, затем D — отсоединиться, бот продолжит работу
-screen -r bot   # вернуться
+ssh oreobra@zbbodhuzwo
+git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
+cd bot
+git checkout feature/panties-analysis-feedback-v2
+nano .env    # вставить TELEGRAM_TOKEN и REPLICATE_API_TOKEN
+pip install -r requirements.txt
+sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
 ```
+
+### Обновление кода (рабочий цикл)
+
+```bash
+# 1. На Mac — закоммить и запушить изменения
+git add . && git commit -m "..." && git push origin feature/panties-analysis-feedback-v2
+
+# 2. На сервере — подтянуть и перезапустить
+ssh oreobra@zbbodhuzwo
+cd ~/bot
+git pull origin feature/panties-analysis-feedback-v2
+
+# Найти PID текущего процесса
+ps aux | grep bot.py
+
+# Убить старый процесс (подставить реальный PID)
+sudo kill <PID>
+
+# Запустить с новым кодом
+sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+
+# Убедиться что запустился
+ps aux | grep bot.py
+```
+
+### Логи
+
+```bash
+sudo tail -f /home/oreobra/bot/bot.log
+```
+
+### Если сервер упал и нужно восстановить
+
+```bash
+# Всё необходимое хранится на GitHub в ветке feature/panties-analysis-feedback-v2
+# Достаточно:
+# 1. Склонировать репозиторий на новый сервер
+# 2. Переключиться на нужную ветку
+# 3. Заполнить .env (токены хранятся отдельно — не в Git!)
+# 4. Запустить бота
+
+git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
+cd bot
+git checkout feature/panties-analysis-feedback-v2
+nano .env
+pip install -r requirements.txt
+sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+```
+
+> ⚠️ **Токены нигде не хранятся в Git** — держи их в надёжном месте отдельно (менеджер паролей, заметки с защитой). Нужны: `TELEGRAM_TOKEN` и `REPLICATE_API_TOKEN`.
 
 ---
 
