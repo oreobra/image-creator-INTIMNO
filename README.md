@@ -3,8 +3,8 @@
 Telegram-бот для генерации профессиональных product-фотографий женского белья (трусы) для бренда **INTIMNO**.
 
 > **Активная ветка на сервере:** `feature/panties-analysis-feedback-v2`  
-> **Сервер:** `zbbodhuzwo` (SSH: `oreobra@zbbodhuzwo`), директория `~/bot`  
-> **Запуск:** прямой процесс `python bot.py` от root (без Docker)
+> **Сервер:** `swift-violet` (SSH: `rodkin@swift-violet`), директория `~/bot`  
+> **Запуск:** `nohup ~/bot/venv/bin/python bot.py` от пользователя `rodkin` (без Docker, Python 3.14 + venv)
 
 ---
 
@@ -112,18 +112,43 @@ python bot.py
 
 ## Деплой на сервер (VPS)
 
-> Сейчас бот запущен напрямую через `nohup python bot.py` от root. Docker не используется.
+> Бот запущен через `nohup` + виртуальное окружение (venv) без Docker.  
+> Сервер использует **Python 3.14** — нужен специальный флаг при установке пакетов.
 
-### Первый деплой (один раз)
+### Первый деплой на новый сервер (один раз)
 
 ```bash
-ssh oreobra@zbbodhuzwo
-git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
+ssh rodkin@swift-violet
+
+# Клонировать репозиторий
+git clone https://github.com/oreobra/image-creator-INTIMNO.git bot
 cd bot
 git checkout feature/panties-analysis-feedback-v2
-nano .env    # вставить TELEGRAM_TOKEN и REPLICATE_API_TOKEN
-pip install -r requirements.txt
-sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+
+# Создать .env с токенами
+nano .env
+# Вставить:
+# TELEGRAM_TOKEN=...
+# REPLICATE_API_TOKEN=...
+
+# Установить системные зависимости (нужны для компиляции)
+sudo apt update
+sudo apt install python3-full python3-dev -y
+
+# Создать виртуальное окружение
+python3 -m venv ~/bot/venv
+
+# Установить пакеты (флаг нужен из-за Python 3.14)
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 ~/bot/venv/bin/pip install aiogram replicate python-dotenv aiohttp
+
+# Создать лог-файл
+touch ~/bot/bot.log
+
+# Запустить бота
+cd ~/bot && nohup ~/bot/venv/bin/python bot.py >> ~/bot/bot.log 2>&1 &
+
+# Проверить что запустился
+sleep 3 && tail -10 ~/bot/bot.log
 ```
 
 ### Обновление кода (рабочий цикл)
@@ -133,7 +158,7 @@ sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/b
 git add . && git commit -m "..." && git push origin feature/panties-analysis-feedback-v2
 
 # 2. На сервере — подтянуть и перезапустить
-ssh oreobra@zbbodhuzwo
+ssh rodkin@swift-violet
 cd ~/bot
 git pull origin feature/panties-analysis-feedback-v2
 
@@ -141,40 +166,52 @@ git pull origin feature/panties-analysis-feedback-v2
 ps aux | grep bot.py
 
 # Убить старый процесс (подставить реальный PID)
-sudo kill <PID>
+kill <PID>
 
 # Запустить с новым кодом
-sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+nohup ~/bot/venv/bin/python bot.py >> ~/bot/bot.log 2>&1 &
 
 # Убедиться что запустился
-ps aux | grep bot.py
+sleep 3 && ps aux | grep bot.py
 ```
 
 ### Логи
 
 ```bash
-sudo tail -f /home/oreobra/bot/bot.log
+tail -f ~/bot/bot.log
 ```
 
-### Если сервер упал и нужно восстановить
+### Если сервер упал — восстановление
+
+Всё хранится на GitHub. Нужно только пересоздать `.env` с токенами:
 
 ```bash
-# Всё необходимое хранится на GitHub в ветке feature/panties-analysis-feedback-v2
-# Достаточно:
-# 1. Склонировать репозиторий на новый сервер
-# 2. Переключиться на нужную ветку
-# 3. Заполнить .env (токены хранятся отдельно — не в Git!)
-# 4. Запустить бота
+# Подключиться к новому серверу
+ssh <user>@<новый_ip>
 
-git clone git@github.com:oreobra/image-creator-INTIMNO.git bot
+# Установить зависимости системы
+sudo apt update && sudo apt install python3-full python3-dev git -y
+
+# Клонировать нужную ветку
+git clone https://github.com/oreobra/image-creator-INTIMNO.git bot
 cd bot
 git checkout feature/panties-analysis-feedback-v2
+
+# Создать .env (токены хранить отдельно — в Git их нет!)
 nano .env
-pip install -r requirements.txt
-sudo bash -c "cd /home/oreobra/bot && nohup python bot.py >> /home/oreobra/bot/bot.log 2>&1 &"
+
+# Создать venv и установить пакеты
+python3 -m venv ~/bot/venv
+PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1 ~/bot/venv/bin/pip install aiogram replicate python-dotenv aiohttp
+
+# Запустить
+touch ~/bot/bot.log
+cd ~/bot && nohup ~/bot/venv/bin/python bot.py >> ~/bot/bot.log 2>&1 &
+sleep 3 && tail -10 ~/bot/bot.log
 ```
 
-> ⚠️ **Токены нигде не хранятся в Git** — держи их в надёжном месте отдельно (менеджер паролей, заметки с защитой). Нужны: `TELEGRAM_TOKEN` и `REPLICATE_API_TOKEN`.
+> ⚠️ **Токены нигде не хранятся в Git** — держи `TELEGRAM_TOKEN` и `REPLICATE_API_TOKEN` в надёжном месте (менеджер паролей).  
+> Токены получить: **TELEGRAM_TOKEN** — [@BotFather](https://t.me/BotFather) → `/mybots` → API Token. **REPLICATE_API_TOKEN** — [replicate.com](https://replicate.com) → Account → API Tokens.
 
 ---
 
