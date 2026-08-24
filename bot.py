@@ -305,37 +305,12 @@ def _build_item_keyboard(item: dict) -> InlineKeyboardMarkup:
 
 
 def _item_card_text(item: dict) -> str:
-    """Human-readable card text for one catalog item."""
-    lines = [f"📦 <b>{item['article']}</b>", f"📂 {item['category']}"]
-
-    if item.get("wb") and item["wb"].startswith("http"):
-        lines.append("🛒 WB: ✅ (кнопка ниже)")
-    if item.get("ozon") and item["ozon"].startswith("http"):
-        lines.append("🛍 Ozon: ✅ (кнопка ниже)")
-
-    # Исходники
-    if item.get("ishodniki") and item["ishodniki"].startswith("http"):
-        lines.append("📁 Исходники: ✅ (кнопка ниже)")
-
-    # Предметка
-    if item.get("predmetka") and item["predmetka"].startswith("http"):
-        lines.append("🖼 Предметка: ✅ (кнопка ниже)")
-    elif item.get("predmetka_label"):
-        lines.append(f"🖼 Предметка: 📂 {item['predmetka_label']}")
-
-    # На моделях
-    if item.get("na_modelyah") and item["na_modelyah"].startswith("http"):
-        lines.append("👗 На моделях: ✅ (кнопка ниже)")
-
-    # Инфографика
-    if item.get("infografika") and item["infografika"].startswith("http"):
-        lines.append("📊 Инфографика: ✅ (кнопка ниже)")
-
-    # Комментарий
+    """Card text: article name + comment only. Links are shown as buttons."""
+    lines = [f"📦 <b>{item['article']}</b>"]
     if item.get("comment"):
         lines.append(f"\n💬 <i>{item['comment']}</i>")
-
     return "\n".join(lines)
+
 
 
 
