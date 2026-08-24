@@ -29,17 +29,19 @@ from states import CatalogFlow, DescribeFlow, FeedbackFlow, ReferenceFlow, Style
 
 START_TEXT = """Привет! 👋
 
-Я генерирую профессиональные фото белья с помощью Nanobanana Pro.
+Я помогаю создавать профессиональные фото белья INTIMNO.
 
-📋 Доступные команды:
-/reference — по референсу
-/describe — описать стиль своими словами
-/style — выбрать готовый стиль
-/catalog — каталог артикулов и ссылок
-/find — быстрый поиск по артикулу
-/cancel — отменить текущее действие
+Выбери раздел:"""
 
-Подробная инструкция → /help"""
+MENU_GENERATE_TEXT = """🎨 <b>Генерация контента</b>
+
+Генерирую фото белья по референсу, описанию или готовому стилю.
+Выбери формат:"""
+
+MENU_NAVIGATE_TEXT = """🗂 <b>Навигация по артикулам</b>
+
+Все ссылки по каждому комплекту: WB, Ozon, исходники, предметка, видео.
+Выбери действие:"""
 
 HELP_TEXT = """📖 Как пользоваться ботом:
 
@@ -223,6 +225,32 @@ FEEDBACK_COMMENT_KEYBOARD = InlineKeyboardMarkup(
         InlineKeyboardButton(text="Пропустить", callback_data="fb_comment_skip"),
     ]]
 )
+
+# ──────────────────────────────────────────────────────────
+#  Main menu keyboards
+# ──────────────────────────────────────────────────────────
+
+MAIN_MENU_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [
+        InlineKeyboardButton(text="🎨 Генерация контента", callback_data="menu:generate"),
+    ],
+    [
+        InlineKeyboardButton(text="🗂 Навигация по артикулам", callback_data="menu:navigate"),
+    ],
+])
+
+MENU_GENERATE_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📷 По референсу", callback_data="menu:go:reference")],
+    [InlineKeyboardButton(text="✍️ Описать словами", callback_data="menu:go:describe")],
+    [InlineKeyboardButton(text="🎨 Выбрать стиль", callback_data="menu:go:style")],
+    [InlineKeyboardButton(text="← Назад", callback_data="menu:main")],
+])
+
+MENU_NAVIGATE_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="📂 Каталог артикулов", callback_data="menu:go:catalog")],
+    [InlineKeyboardButton(text="🔍 Найти артикул", callback_data="menu:go:find")],
+    [InlineKeyboardButton(text="← Назад", callback_data="menu:main")],
+])
 
 # ──────────────────────────────────────────────────────────
 #  Catalog keyboards (dynamic builders)
@@ -480,7 +508,58 @@ async def run_generation(
 
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer(START_TEXT)
+    await message.answer(START_TEXT, reply_markup=MAIN_MENU_KEYBOARD)
+
+
+async def menu_main_callback(callback: CallbackQuery) -> None:
+    """menu:main — back to main menu."""
+    await callback.message.edit_text(START_TEXT, reply_markup=MAIN_MENU_KEYBOARD)
+    await callback.answer()
+
+
+async def menu_generate_callback(callback: CallbackQuery) -> None:
+    """menu:generate — show generation section."""
+    await callback.message.edit_text(
+        MENU_GENERATE_TEXT, reply_markup=MENU_GENERATE_KEYBOARD, parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+async def menu_navigate_callback(callback: CallbackQuery) -> None:
+    """menu:navigate — show navigation section."""
+    await callback.message.edit_text(
+        MENU_NAVIGATE_TEXT, reply_markup=MENU_NAVIGATE_KEYBOARD, parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+async def menu_go_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    """menu:go:<action> — launch a flow from the menu button."""
+    action = callback.data.split(":")[2]
+    await callback.answer()
+
+    if action == "reference":
+        await state.set_state(ReferenceFlow.waiting_panties)
+        await callback.message.answer(PANTIES_REQUEST_TEXT)
+    elif action == "describe":
+        await state.set_state(DescribeFlow.waiting_panties)
+        await callback.message.answer(PANTIES_REQUEST_TEXT)
+    elif action == "style":
+        await state.set_state(StyleFlow.waiting_panties)
+        await callback.message.answer(PANTIES_REQUEST_TEXT)
+    elif action == "catalog":
+        items = catalog.get_catalog()
+        if not items:
+            await callback.message.answer(CATALOG_EMPTY_TEXT)
+        else:
+            await callback.message.answer(
+                CATALOG_MAIN_TEXT,
+                reply_markup=_build_catalog_main_keyboard(),
+                parse_mode="HTML",
+            )
+    elif action == "find":
+        await state.set_state(CatalogFlow.waiting_search)
+        await callback.message.answer(FIND_PROMPT_TEXT, parse_mode="HTML")
 
 
 async def cmd_help(message: Message) -> None:
@@ -1152,6 +1231,12 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(cmd_style, Command("style"))
     dp.message.register(cmd_catalog, Command("catalog"))
     dp.message.register(cmd_find, Command("find"))
+
+    # ── Main menu callbacks ──────────────────────────────
+    dp.callback_query.register(menu_main_callback, F.data == "menu:main")
+    dp.callback_query.register(menu_generate_callback, F.data == "menu:generate")
+    dp.callback_query.register(menu_navigate_callback, F.data == "menu:navigate")
+    dp.callback_query.register(menu_go_callback, F.data.startswith("menu:go:"))
 
     # ── Catalog navigation callbacks ───────────────────────
     dp.callback_query.register(catalog_main_callback, F.data == "cat:main")
