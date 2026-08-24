@@ -291,7 +291,7 @@ def _build_item_keyboard(item: dict) -> InlineKeyboardMarkup:
         ("ishodniki",   "📁 Исходники"),
         ("predmetka",   "🖼 Предметка"),
         ("na_modelyah", "👗 На моделях"),
-        ("infografika", "📊 Инфографика"),
+        ("video",       "🎬 Видео"),
     ]
     for field, label in link_fields:
         value = item.get(field, "")

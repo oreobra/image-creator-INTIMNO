@@ -35,7 +35,7 @@ class CatalogItem(TypedDict):
     predmetka: str        # URL предметки (Google Drive)
     predmetka_label: str  # Название папки если нет URL
     na_modelyah: str      # URL «на моделях» (Google Drive)
-    infografika: str      # URL инфографики
+    video: str            # URL видео
     comment: str          # Комментарий
 
 
@@ -184,7 +184,7 @@ def _parse_xlsx(xlsx_bytes: bytes) -> list[CatalogItem]:
             predmetka=pred_url,
             predmetka_label=pred_label,
             na_modelyah=mod_url,
-            infografika=inf_url,
+            video=inf_url,
             comment=comment,
         ))
 
