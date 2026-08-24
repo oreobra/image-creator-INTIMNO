@@ -16,11 +16,12 @@ from aiogram.types import (
     Message,
 )
 
+import catalog
 import config
 import notes
 import services
 import styles
-from states import DescribeFlow, FeedbackFlow, ReferenceFlow, StyleFlow
+from states import CatalogFlow, DescribeFlow, FeedbackFlow, ReferenceFlow, StyleFlow
 
 # ──────────────────────────────────────────────────────────
 #  Static texts
@@ -34,6 +35,8 @@ START_TEXT = """Привет! 👋
 /reference — по референсу
 /describe — описать стиль своими словами
 /style — выбрать готовый стиль
+/catalog — каталог артикулов и ссылок
+/find — быстрый поиск по артикулу
 /cancel — отменить текущее действие
 
 Подробная инструкция → /help"""
@@ -141,6 +144,26 @@ FEEDBACK_THANKS_TEXT = "Спасибо за ответы! Учту это в с�
 FEEDBACK_DECLINED_TEXT = "Хорошо! Хочешь ещё? /reference, /describe или /style"
 FEEDBACK_BUTTON_EXPECTED_TEXT = "Пожалуйста, выбери один из вариантов кнопкой выше 👆"
 
+# ──────────────────────────────────────────────────────────
+#  Catalog texts
+# ──────────────────────────────────────────────────────────
+
+CATALOG_MAIN_TEXT = "📂 <b>Каталог INTIMNO</b>\n\nВыбери категорию:"
+CATALOG_EMPTY_TEXT = "😕 Каталог пока пуст — попробуй позже."
+CATALOG_LIST_TEXT = "📋 <b>{category}</b> — {total} артикулов\nСтраница {page}/{pages}:"
+CATALOG_ITEM_NOT_FOUND_TEXT = "❌ Артикул не найден. Попробуй /find или /catalog."
+
+FIND_PROMPT_TEXT = (
+    "🔍 Введи название или часть артикула для поиска.\n\n"
+    "Например: <i>бразильяна кружево</i>, <i>танга print</i>, <i>slipi smooth</i>\n\n"
+    "Поиск нечёткий — точное совпадение не обязательно."
+)
+FIND_NO_RESULTS_TEXT = "😕 Ничего не найдено по запросу <b>{query}</b>.\n\nПопробуй другое слово или открой /catalog."
+FIND_RESULTS_TEXT = "🔍 По запросу <b>{query}</b> нашёл {count}:"
+
+# Items per page in /catalog list
+_CATALOG_PAGE_SIZE = 10
+
 # MIME types accepted as image files
 _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"}
 
@@ -200,6 +223,108 @@ FEEDBACK_COMMENT_KEYBOARD = InlineKeyboardMarkup(
         InlineKeyboardButton(text="Пропустить", callback_data="fb_comment_skip"),
     ]]
 )
+
+# ──────────────────────────────────────────────────────────
+#  Catalog keyboards (dynamic builders)
+# ──────────────────────────────────────────────────────────
+
+def _build_catalog_main_keyboard() -> InlineKeyboardMarkup:
+    """Two category buttons."""
+    items = catalog.get_catalog()
+    nb_count = sum(1 for i in items if i["category"] == "НИЖНЕЕ БЕЛЬЕ")
+    bz_count = sum(1 for i in items if i["category"] == "БЫСТРЫЕ ЗАПУСКИ")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"🩱 Нижнее бельё ({nb_count})",
+            callback_data="cat:list:НИЖНЕЕ БЕЛЬЕ:0",
+        )],
+        [InlineKeyboardButton(
+            text=f"⚡ Быстрые запуски ({bz_count})",
+            callback_data="cat:list:БЫСТРЫЕ ЗАПУСКИ:0",
+        )],
+    ])
+
+
+def _build_catalog_list_keyboard(
+    items: list,
+    page: int,
+    category: str,
+) -> InlineKeyboardMarkup:
+    """Paginated list of article buttons + prev/next navigation."""
+    total = len(items)
+    pages = max(1, -(-total // _CATALOG_PAGE_SIZE))  # ceil division
+    start = page * _CATALOG_PAGE_SIZE
+    page_items = items[start : start + _CATALOG_PAGE_SIZE]
+
+    rows = [
+        [InlineKeyboardButton(
+            text=item["article"],
+            callback_data=f"cat:item:{item['article']}",
+        )]
+        for item in page_items
+    ]
+
+    nav_row: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(
+            text="← Назад",
+            callback_data=f"cat:list:{category}:{page - 1}",
+        ))
+    if page < pages - 1:
+        nav_row.append(InlineKeyboardButton(
+            text=f"Далее → ({page + 2}/{pages})",
+            callback_data=f"cat:list:{category}:{page + 1}",
+        ))
+    if nav_row:
+        rows.append(nav_row)
+
+    rows.append([InlineKeyboardButton(text="📂 К категориям", callback_data="cat:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _build_item_keyboard(item: dict) -> InlineKeyboardMarkup:
+    """URL-link buttons for a single catalog item (only non-empty http links shown)."""
+    rows: list[list[InlineKeyboardButton]] = []
+    link_fields = [
+        ("wb",          "🛒 WB"),
+        ("ozon",        "🛍 Ozon"),
+        ("ishodniki",   "📁 Исходники"),
+        ("predmetka",   "🖼 Предметка"),
+        ("na_modelyah", "👗 На моделях"),
+        ("infografika", "📊 Инфографика"),
+    ]
+    for field, label in link_fields:
+        value = item.get(field, "")
+        if value and value.startswith("http"):
+            rows.append([InlineKeyboardButton(text=label, url=value)])
+    rows.append([InlineKeyboardButton(
+        text="← К списку",
+        callback_data=f"cat:list:{item['category']}:0",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _item_card_text(item: dict) -> str:
+    """Human-readable card text for one catalog item."""
+    lines = [f"📦 <b>{item['article']}</b>", f"📂 {item['category']}"]
+    info_fields = [
+        ("wb",          "🛒 WB"),
+        ("ozon",        "🛍 Ozon"),
+        ("ishodniki",   "📁 Исходники"),
+        ("predmetka",   "🖼 Предметка"),
+        ("na_modelyah", "👗 На моделях"),
+        ("infografika", "📊 Инфографика"),
+    ]
+    for field, label in info_fields:
+        val = item.get(field, "")
+        if val:
+            if val.startswith("http"):
+                lines.append(f"{label}: ✅ (кнопка ниже)")
+            else:
+                lines.append(f"{label}: {val}")
+    if item.get("comment"):
+        lines.append(f"\n💬 <i>{item['comment']}</i>")
+    return "\n".join(lines)
 
 
 def _build_feedback_question_keyboard(question_index: int, options: list[dict]) -> InlineKeyboardMarkup:
@@ -396,6 +521,114 @@ async def cmd_style(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(StyleFlow.waiting_panties)
     await message.answer(PANTIES_REQUEST_TEXT)
+
+
+# ──────────────────────────────────────────────────────────
+#  /catalog — browse by category
+# ──────────────────────────────────────────────────────────
+
+async def cmd_catalog(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    items = catalog.get_catalog()
+    if not items:
+        await message.answer(CATALOG_EMPTY_TEXT)
+        return
+    await message.answer(
+        CATALOG_MAIN_TEXT,
+        reply_markup=_build_catalog_main_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+async def catalog_main_callback(callback: CallbackQuery) -> None:
+    """cat:main — show category selector."""
+    items = catalog.get_catalog()
+    if not items:
+        await callback.answer("Каталог пуст", show_alert=True)
+        return
+    await callback.message.edit_text(
+        CATALOG_MAIN_TEXT,
+        reply_markup=_build_catalog_main_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+async def catalog_list_callback(callback: CallbackQuery) -> None:
+    """cat:list:<category>:<page> — paginated article list."""
+    parts = callback.data.split(":", 3)
+    category = parts[2]
+    page = int(parts[3]) if len(parts) > 3 else 0
+
+    items = catalog.get_by_category(category)
+    if not items:
+        await callback.answer("Нет артикулов в этой категории", show_alert=True)
+        return
+
+    total = len(items)
+    pages = max(1, -(-total // _CATALOG_PAGE_SIZE))
+    text = CATALOG_LIST_TEXT.format(category=category, total=total, page=page + 1, pages=pages)
+    await callback.message.edit_text(
+        text,
+        reply_markup=_build_catalog_list_keyboard(items, page, category),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+async def catalog_item_callback(callback: CallbackQuery) -> None:
+    """cat:item:<article> — show item card with link buttons."""
+    parts = callback.data.split(":", 2)
+    article = parts[2] if len(parts) > 2 else ""
+    item = catalog.get_by_article(article)
+    if not item:
+        await callback.answer(CATALOG_ITEM_NOT_FOUND_TEXT, show_alert=True)
+        return
+    await callback.message.edit_text(
+        _item_card_text(item),
+        reply_markup=_build_item_keyboard(item),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+# ──────────────────────────────────────────────────────────
+#  /find — fuzzy text search
+# ──────────────────────────────────────────────────────────
+
+async def cmd_find(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(CatalogFlow.waiting_search)
+    await message.answer(FIND_PROMPT_TEXT, parse_mode="HTML")
+
+
+async def find_got_query(message: Message, state: FSMContext) -> None:
+    """User typed a search query — run fuzzy search and show results."""
+    await state.clear()
+    query = (message.text or "").strip()
+    if not query:
+        await message.answer(FIND_PROMPT_TEXT, parse_mode="HTML")
+        return
+    results = catalog.search_catalog(query)
+    if not results:
+        await message.answer(
+            FIND_NO_RESULTS_TEXT.format(query=query),
+            parse_mode="HTML",
+        )
+        return
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{'\ud83e\ude71' if r['category'] == 'НИЖНЕЕ БЕЛЬЕ' else '\u26a1'} {r['article']}",
+            callback_data=f"cat:item:{r['article']}",
+        )]
+        for r in results
+    ]
+    rows.append([InlineKeyboardButton(text="📂 Открыть каталог", callback_data="cat:main")])
+    await message.answer(
+        FIND_RESULTS_TEXT.format(query=query, count=len(results)),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+        parse_mode="HTML",
+    )
 
 
 # ──────────────────────────────────────────────────────────
@@ -912,6 +1145,8 @@ async def set_commands(bot: Bot) -> None:
         BotCommand(command="reference", description="Генерация по референсу"),
         BotCommand(command="describe",  description="Описать стиль словами"),
         BotCommand(command="style",     description="Выбрать готовый стиль"),
+        BotCommand(command="catalog",   description="Каталог артикулов и ссылок"),
+        BotCommand(command="find",      description="Поиск по артикулу"),
         BotCommand(command="cancel",    description="Отменить текущее действие"),
     ])
 
@@ -928,6 +1163,16 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.message.register(cmd_reference, Command("reference"))
     dp.message.register(cmd_describe, Command("describe"))
     dp.message.register(cmd_style, Command("style"))
+    dp.message.register(cmd_catalog, Command("catalog"))
+    dp.message.register(cmd_find, Command("find"))
+
+    # ── Catalog navigation callbacks ───────────────────────
+    dp.callback_query.register(catalog_main_callback, F.data == "cat:main")
+    dp.callback_query.register(catalog_list_callback, F.data.startswith("cat:list:"))
+    dp.callback_query.register(catalog_item_callback, F.data.startswith("cat:item:"))
+
+    # ── /find search input ─────────────────────────────────
+    dp.message.register(find_got_query, CatalogFlow.waiting_search, F.text)
 
     # ── Panties upload — shared across all flows (first step in every flow) ──
     dp.message.register(got_panties_photo, _WAITING_PANTIES_STATES, _IMAGE_FILTER)
@@ -992,6 +1237,13 @@ async def main() -> None:
     register_handlers(dp)
 
     await set_commands(bot)
+
+    # Load catalog at startup (uses disk cache if available, fetches fresh otherwise)
+    await catalog.load_catalog()
+
+    # Schedule weekly auto-refresh in background
+    asyncio.create_task(catalog.schedule_weekly_refresh())
+
     logging.info("Bot starting…")
     await dp.start_polling(bot, skip_updates=True)
 

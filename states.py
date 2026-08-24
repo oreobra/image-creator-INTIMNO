@@ -33,3 +33,9 @@ class FeedbackFlow(StatesGroup):
     waiting_consent = State()           # asking whether the user wants to answer a few quick questions
     waiting_dynamic_question = State()  # walking through the AI-generated, generation-specific questions
     waiting_comment = State()           # optional free-text comment
+
+
+class CatalogFlow(StatesGroup):
+    """Navigation catalog: /catalog browsing and /find text search — zero AI tokens."""
+    waiting_search = State()            # waiting for user's search query after /find
+

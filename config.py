@@ -19,6 +19,14 @@ GENERATION_MODEL = "google/nano-banana-pro"
 NOTES_FILE_PATH: str = os.getenv("NOTES_FILE_PATH", "/app/data/feedback_notes.json")
 MAX_FEEDBACK_NOTES: int = int(os.getenv("MAX_FEEDBACK_NOTES", "20"))
 
+# Catalog (Google Sheets CSV export — public, no auth required)
+CATALOG_SHEET_URL: str = os.getenv(
+    "CATALOG_SHEET_URL",
+    "https://docs.google.com/spreadsheets/d/1-8tNEZAbCycpJvjKATQgMvvTcG8P4cA6AT_D9jg-gW0/export?format=csv&gid=0",
+)
+CATALOG_CACHE_PATH: str = os.getenv("CATALOG_CACHE_PATH", "/app/data/catalog_cache.json")
+CATALOG_REFRESH_INTERVAL_DAYS: int = int(os.getenv("CATALOG_REFRESH_INTERVAL_DAYS", "7"))
+
 if not TELEGRAM_TOKEN:
     raise ValueError("TELEGRAM_TOKEN is not set in .env")
 
