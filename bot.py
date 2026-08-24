@@ -155,8 +155,8 @@ CATALOG_ITEM_NOT_FOUND_TEXT = "❌ Артикул не найден. Попро�
 
 FIND_PROMPT_TEXT = (
     "🔍 Введи название или часть артикула для поиска.\n\n"
-    "Например: <i>бразильяна кружево</i>, <i>танга print</i>, <i>slipi smooth</i>\n\n"
-    "Поиск нечёткий — точное совпадение не обязательно."
+    "Например: <code>trysi_bikini</code>, <code>slipi</code>, <code>stringi_print</code>\n\n"
+    "Поиск нечёткий — название может быть неполным."
 )
 FIND_NO_RESULTS_TEXT = "😕 Ничего не найдено по запросу <b>{query}</b>.\n\nПопробуй другое слово или открой /catalog."
 FIND_RESULTS_TEXT = "🔍 По запросу <b>{query}</b> нашёл {count}:"
@@ -307,23 +307,37 @@ def _build_item_keyboard(item: dict) -> InlineKeyboardMarkup:
 def _item_card_text(item: dict) -> str:
     """Human-readable card text for one catalog item."""
     lines = [f"📦 <b>{item['article']}</b>", f"📂 {item['category']}"]
-    info_fields = [
-        ("wb",          "🛒 WB"),
-        ("ozon",        "🛍 Ozon"),
-        ("ishodniki",   "📁 Исходники"),
-        ("predmetka",   "🖼 Предметка"),
-        ("na_modelyah", "👗 На моделях"),
-        ("infografika", "📊 Инфографика"),
-    ]
-    for field, label in info_fields:
-        val = item.get(field, "")
-        if val:
-            if val.startswith("http"):
-                lines.append(f"{label}: ✅ (кнопка ниже)")
-            else:
-                lines.append(f"{label}: {val}")
+
+    # WB / Ozon — only show presence (URL button below)
+    if item.get("wb") and item["wb"].startswith("http"):
+        lines.append("🛒 WB: ✅ (кнопка ниже)")
+    if item.get("ozon") and item["ozon"].startswith("http"):
+        lines.append("🛍 Ozon: ✅ (кнопка ниже)")
+
+    # Исходники
+    if item.get("ishodniki") and item["ishodniki"].startswith("http"):
+        lines.append("📁 Исходники: ✅ (кнопка ниже)")
+    elif item.get("ishodniki_label"):
+        lines.append(f"📁 Исходники: {item['ishodniki_label']}")
+
+    # Предметка
+    if item.get("predmetka") and item["predmetka"].startswith("http"):
+        lines.append("🖼 Предметка: ✅ (кнопка ниже)")
+    elif item.get("predmetka_label"):
+        lines.append(f"🖼 Предметка: 📂 {item['predmetka_label']}")
+
+    # На моделях
+    if item.get("na_modelyah") and item["na_modelyah"].startswith("http"):
+        lines.append("👗 На моделях: ✅ (кнопка ниже)")
+
+    # Инфографика
+    if item.get("infografika") and item["infografika"].startswith("http"):
+        lines.append("📊 Инфографика: ✅ (кнопка ниже)")
+
+    # Комментарий
     if item.get("comment"):
         lines.append(f"\n💬 <i>{item['comment']}</i>")
+
     return "\n".join(lines)
 
 

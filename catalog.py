@@ -32,10 +32,12 @@ class CatalogItem(TypedDict):
     category: str         # НИЖНЕЕ БЕЛЬЕ | БЫСТРЫЕ ЗАПУСКИ
     wb: str               # Ссылка WB
     ozon: str             # Ссылка Ozon
-    ishodniki: str        # Исходники
-    predmetka: str        # Предметка
-    na_modelyah: str      # На моделях
-    infografika: str      # Инфографика
+    ishodniki: str        # URL исходников (Яндекс Диск)
+    ishodniki_label: str  # Подпись/доп.текст если нет URL
+    predmetka: str        # URL предметки
+    predmetka_label: str  # Название папки предметки если нет URL
+    na_modelyah: str      # URL «на моделях»
+    infografika: str      # URL инфографики
     comment: str          # Комментарий
 
 
@@ -55,6 +57,38 @@ _INCLUDED_CATEGORIES_UPPER = {"НИЖНЕЕ БЕЛЬЕ", "БЫСТРЫЕ ЗАП�
 #  CSV parsing
 # ──────────────────────────────────────────────────────────
 
+def _extract_url(raw: str) -> tuple[str, str]:
+    """
+    Given a possibly multi-line cell value, return (url, extra_text).
+    The first non-empty line that starts with http is taken as the URL.
+    Remaining non-empty lines become extra_text.
+    """
+    lines = [l.strip() for l in raw.splitlines()]
+    url = ""
+    rest: list[str] = []
+    for line in lines:
+        if not line:
+            continue
+        if not url and line.startswith("http"):
+            url = line
+        else:
+            rest.append(line)
+    return url, " | ".join(rest) if rest else ""
+
+
+# Strings that indicate "no data" in a cell
+_PLACEHOLDERS = {
+    "-", "—", "нет", "нет ссылки", "исходники", "исходники тут",
+    "предметка тут", "студия тут", "студия",
+}
+
+
+def _clean(raw: str) -> str:
+    """Return raw value or '' if it is a known placeholder."""
+    v = raw.strip()
+    return "" if v.lower() in _PLACEHOLDERS else v
+
+
 def _parse_csv(csv_text: str) -> list[CatalogItem]:
     """Parse the Google Sheets CSV into a list of CatalogItem dicts."""
     items: list[CatalogItem] = []
@@ -70,22 +104,22 @@ def _parse_csv(csv_text: str) -> list[CatalogItem]:
         while len(row) < 8:
             row.append("")
 
-        article   = row[0].strip()
-        wb        = row[1].strip()
-        ozon      = row[2].strip()
-        ishodniki = row[3].strip()
-        predmetka = row[4].strip()
-        infograf  = row[5].strip()
-        na_mod    = row[6].strip()
-        comment   = row[7].strip()
+        article      = row[0].strip()
+        wb_raw       = row[1].strip()
+        ozon_raw     = row[2].strip()
+        ishodniki_raw = row[3].strip()
+        predmetka_raw = row[4].strip()
+        infograf_raw  = row[5].strip()
+        na_mod_raw    = row[6].strip()
+        comment_raw   = row[7].strip()
 
         # Detect category header rows (ALL CAPS, no links in other columns)
         if (
             article
             and article.upper() == article
-            and not wb
-            and not ozon
-            and not ishodniki
+            and not wb_raw
+            and not ozon_raw
+            and not ishodniki_raw
         ):
             current_category = article.strip()
             continue
@@ -104,25 +138,38 @@ def _parse_csv(csv_text: str) -> list[CatalogItem]:
             else "БЫСТРЫЕ ЗАПУСКИ"
         )
 
-        # Treat placeholder strings as empty
-        _PLACEHOLDERS = {"-", "исходники", "исходники тут", "предметка тут", "студия тут"}
+        # Extract URLs and extra text from each field
+        wb_url, _       = _extract_url(wb_raw)
+        ozon_url, _     = _extract_url(ozon_raw)
+        ish_url, ish_extra = _extract_url(ishodniki_raw)
+        pred_url, pred_extra = _extract_url(predmetka_raw)
+        inf_url, _      = _extract_url(infograf_raw)
+        mod_url, _      = _extract_url(na_mod_raw)
 
-        def _clean(v: str) -> str:
-            return v if v and v not in _PLACEHOLDERS else ""
+        # For non-URL fields, keep folder name if meaningful
+        def _folder(raw: str, url: str, extra: str) -> str:
+            """Return folder/label text for non-URL fields."""
+            v = _clean(raw.splitlines()[0].strip() if raw else "")
+            if url:
+                return ""  # URL covers it
+            return v
 
         items.append(CatalogItem(
             article=article,
             category=category,
-            wb=_clean(wb),
-            ozon=_clean(ozon),
-            ishodniki=_clean(ishodniki),
-            predmetka=_clean(predmetka),
-            na_modelyah=_clean(na_mod),
-            infografika=_clean(infograf),
-            comment=comment,
+            wb=_clean(wb_url) or _clean(wb_raw),
+            ozon=_clean(ozon_url) or _clean(ozon_raw),
+            ishodniki=_clean(ish_url),                     # only URL
+            ishodniki_label=_folder(ishodniki_raw, ish_url, ish_extra) or ish_extra,
+            predmetka=_clean(pred_url),                    # only URL
+            predmetka_label=_folder(predmetka_raw, pred_url, pred_extra),
+            na_modelyah=_clean(mod_url),
+            infografika=_clean(inf_url),
+            comment=_clean(comment_raw),
         ))
 
     return items
+
 
 
 # ──────────────────────────────────────────────────────────
