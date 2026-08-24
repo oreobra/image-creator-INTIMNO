@@ -308,7 +308,6 @@ def _item_card_text(item: dict) -> str:
     """Human-readable card text for one catalog item."""
     lines = [f"📦 <b>{item['article']}</b>", f"📂 {item['category']}"]
 
-    # WB / Ozon — only show presence (URL button below)
     if item.get("wb") and item["wb"].startswith("http"):
         lines.append("🛒 WB: ✅ (кнопка ниже)")
     if item.get("ozon") and item["ozon"].startswith("http"):
@@ -317,8 +316,6 @@ def _item_card_text(item: dict) -> str:
     # Исходники
     if item.get("ishodniki") and item["ishodniki"].startswith("http"):
         lines.append("📁 Исходники: ✅ (кнопка ниже)")
-    elif item.get("ishodniki_label"):
-        lines.append(f"📁 Исходники: {item['ishodniki_label']}")
 
     # Предметка
     if item.get("predmetka") and item["predmetka"].startswith("http"):
@@ -339,6 +336,7 @@ def _item_card_text(item: dict) -> str:
         lines.append(f"\n💬 <i>{item['comment']}</i>")
 
     return "\n".join(lines)
+
 
 
 def _build_feedback_question_keyboard(question_index: int, options: list[dict]) -> InlineKeyboardMarkup:

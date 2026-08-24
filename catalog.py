@@ -1,16 +1,14 @@
 """
 catalog.py — INTIMNO product catalog loader and search.
 
-Reads data from a public Google Sheets CSV export (no API key needed).
-Caches the result to disk and auto-refreshes once per week.
+Downloads the Google Sheets workbook as XLSX (preserves hyperlinks!),
+caches to disk, and auto-refreshes once per week.
 Search is done locally with rapidfuzz — zero AI tokens consumed.
 """
 
 from __future__ import annotations
 
 import asyncio
-import csv
-import hashlib
 import io
 import json
 import logging
@@ -18,6 +16,7 @@ import time
 from typing import TypedDict
 
 import aiohttp
+import openpyxl
 
 import config
 
@@ -33,10 +32,9 @@ class CatalogItem(TypedDict):
     wb: str               # Ссылка WB
     ozon: str             # Ссылка Ozon
     ishodniki: str        # URL исходников (Яндекс Диск)
-    ishodniki_label: str  # Подпись/доп.текст если нет URL
-    predmetka: str        # URL предметки
-    predmetka_label: str  # Название папки предметки если нет URL
-    na_modelyah: str      # URL «на моделях»
+    predmetka: str        # URL предметки (Google Drive)
+    predmetka_label: str  # Название папки если нет URL
+    na_modelyah: str      # URL «на моделях» (Google Drive)
     infografika: str      # URL инфографики
     comment: str          # Комментарий
 
@@ -46,217 +44,230 @@ class CatalogItem(TypedDict):
 # ──────────────────────────────────────────────────────────
 
 _catalog: list[CatalogItem] = []
-_last_csv_hash: str = ""
 _loaded_at: float = 0.0
 
 # Categories included in navigation/search
 _INCLUDED_CATEGORIES_UPPER = {"НИЖНЕЕ БЕЛЬЕ", "БЫСТРЫЕ ЗАПУСКИ"}
 
-
-# ──────────────────────────────────────────────────────────
-#  CSV parsing
-# ──────────────────────────────────────────────────────────
-
-def _extract_url(raw: str) -> tuple[str, str]:
-    """
-    Given a possibly multi-line cell value, return (url, extra_text).
-    The first non-empty line that starts with http is taken as the URL.
-    Remaining non-empty lines become extra_text.
-    """
-    lines = [l.strip() for l in raw.splitlines()]
-    url = ""
-    rest: list[str] = []
-    for line in lines:
-        if not line:
-            continue
-        if not url and line.startswith("http"):
-            url = line
-        else:
-            rest.append(line)
-    return url, " | ".join(rest) if rest else ""
-
-
-# Strings that indicate "no data" in a cell
+# Placeholder strings that mean "no data"
 _PLACEHOLDERS = {
-    "-", "—", "нет", "нет ссылки", "исходники", "исходники тут",
+    "", "-", "—", "нет", "нет ссылки",
+    "исходники", "исходники тут",
     "предметка тут", "студия тут", "студия",
 }
 
 
-def _clean(raw: str) -> str:
-    """Return raw value or '' if it is a known placeholder."""
-    v = raw.strip()
+# ──────────────────────────────────────────────────────────
+#  Helpers
+# ──────────────────────────────────────────────────────────
+
+def _cell_url(cell) -> str:
+    """Return the hyperlink URL of a cell, or '' if none."""
+    if cell.hyperlink and cell.hyperlink.target:
+        return cell.hyperlink.target.strip()
+    return ""
+
+
+def _cell_val(cell) -> str:
+    """Return the text value of a cell as a stripped string."""
+    v = cell.value
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def _clean(v: str) -> str:
+    """Return v or '' if it is a known placeholder."""
     return "" if v.lower() in _PLACEHOLDERS else v
 
 
-def _parse_csv(csv_text: str) -> list[CatalogItem]:
-    """Parse the Google Sheets CSV into a list of CatalogItem dicts."""
+def _best_url(cell) -> str:
+    """
+    Best URL for a cell:
+    1. Hyperlink target (Google Drive chip, or linked text)
+    2. Cell value if it starts with http
+    3. ''
+    """
+    url = _cell_url(cell)
+    if url:
+        return url
+    val = _cell_val(cell)
+    if val.startswith("http"):
+        # Take first non-empty line (multi-line cells)
+        for line in val.splitlines():
+            line = line.strip()
+            if line.startswith("http"):
+                return line
+    return ""
+
+
+# ──────────────────────────────────────────────────────────
+#  XLSX parsing
+# ──────────────────────────────────────────────────────────
+
+def _parse_xlsx(xlsx_bytes: bytes) -> list[CatalogItem]:
+    """Parse the Google Sheets XLSX export into CatalogItem list."""
+    wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
+    ws = wb.active
+
     items: list[CatalogItem] = []
     current_category = ""
 
-    reader = csv.reader(io.StringIO(csv_text))
-
-    # Skip header row
-    next(reader, None)
-
-    for row in reader:
-        # Pad short rows
+    rows = list(ws.iter_rows())
+    # Skip header row (row 0)
+    for row in rows[1:]:
+        # Pad to at least 8 columns
         while len(row) < 8:
-            row.append("")
+            row = list(row) + [None]  # type: ignore[assignment]
 
-        article      = row[0].strip()
-        wb_raw       = row[1].strip()
-        ozon_raw     = row[2].strip()
-        ishodniki_raw = row[3].strip()
-        predmetka_raw = row[4].strip()
-        infograf_raw  = row[5].strip()
-        na_mod_raw    = row[6].strip()
-        comment_raw   = row[7].strip()
+        article_cell   = row[0]
+        wb_cell        = row[1]
+        ozon_cell      = row[2]
+        ish_cell       = row[3]
+        pred_cell      = row[4]
+        inf_cell       = row[5]
+        mod_cell       = row[6]
+        comment_cell   = row[7]
 
-        # Detect category header rows (ALL CAPS, no links in other columns)
+        article = _cell_val(article_cell)
+
+        # Detect category header rows (ALL CAPS, no other content)
         if (
             article
             and article.upper() == article
-            and not wb_raw
-            and not ozon_raw
-            and not ishodniki_raw
+            and not _cell_val(wb_cell)
+            and not _cell_val(ozon_cell)
+            and not _cell_val(ish_cell)
         ):
-            current_category = article.strip()
+            current_category = article
             continue
 
-        # Skip blank article rows
         if not article:
             continue
 
-        # Only include the two target categories
         if current_category.upper() not in _INCLUDED_CATEGORIES_UPPER:
             continue
 
-        # Normalise category name
         category = (
             "НИЖНЕЕ БЕЛЬЕ" if "НИЖНЕЕ БЕЛЬЕ" in current_category.upper()
             else "БЫСТРЫЕ ЗАПУСКИ"
         )
 
-        # Extract URLs and extra text from each field
-        wb_url, _       = _extract_url(wb_raw)
-        ozon_url, _     = _extract_url(ozon_raw)
-        ish_url, ish_extra = _extract_url(ishodniki_raw)
-        pred_url, pred_extra = _extract_url(predmetka_raw)
-        inf_url, _      = _extract_url(infograf_raw)
-        mod_url, _      = _extract_url(na_mod_raw)
+        wb_url   = _clean(_best_url(wb_cell))
+        ozon_url = _clean(_best_url(ozon_cell))
+        ish_url  = _clean(_best_url(ish_cell))
+        pred_url = _clean(_best_url(pred_cell))
+        inf_url  = _clean(_best_url(inf_cell))
+        mod_url  = _clean(_best_url(mod_cell))
 
-        # For non-URL fields, keep folder name if meaningful
-        def _folder(raw: str, url: str, extra: str) -> str:
-            """Return folder/label text for non-URL fields."""
-            v = _clean(raw.splitlines()[0].strip() if raw else "")
-            if url:
-                return ""  # URL covers it
-            return v
+        # Folder label for predmetka when no URL available
+        pred_label = ""
+        if not pred_url:
+            pred_label = _clean(_cell_val(pred_cell))
+
+        # Comment: use hyperlink if present, else text
+        comment_url = _cell_url(comment_cell)
+        comment_txt = _clean(_cell_val(comment_cell))
+        if comment_url:
+            comment = comment_txt or "ссылка"
+            # We'll store URL in comment for now; it will show as text
+            comment = f"{comment_txt} ({comment_url})" if comment_txt else comment_url
+        else:
+            comment = comment_txt
 
         items.append(CatalogItem(
             article=article,
             category=category,
-            wb=_clean(wb_url) or _clean(wb_raw),
-            ozon=_clean(ozon_url) or _clean(ozon_raw),
-            ishodniki=_clean(ish_url),                     # only URL
-            ishodniki_label=_folder(ishodniki_raw, ish_url, ish_extra) or ish_extra,
-            predmetka=_clean(pred_url),                    # only URL
-            predmetka_label=_folder(predmetka_raw, pred_url, pred_extra),
-            na_modelyah=_clean(mod_url),
-            infografika=_clean(inf_url),
-            comment=_clean(comment_raw),
+            wb=wb_url,
+            ozon=ozon_url,
+            ishodniki=ish_url,
+            predmetka=pred_url,
+            predmetka_label=pred_label,
+            na_modelyah=mod_url,
+            infografika=inf_url,
+            comment=comment,
         ))
 
     return items
-
 
 
 # ──────────────────────────────────────────────────────────
 #  Loading and caching
 # ──────────────────────────────────────────────────────────
 
-async def _fetch_csv() -> str:
-    """Download the CSV export from Google Sheets."""
+# XLSX download URL (public, no auth required)
+_XLSX_URL = config.CATALOG_SHEET_URL.replace("format=csv", "format=xlsx")
+
+
+async def _fetch_xlsx() -> bytes:
+    """Download the XLSX export from Google Sheets."""
     async with aiohttp.ClientSession() as session:
         async with session.get(
-            config.CATALOG_SHEET_URL,
-            timeout=aiohttp.ClientTimeout(total=30),
+            _XLSX_URL,
+            timeout=aiohttp.ClientTimeout(total=60),
         ) as resp:
             resp.raise_for_status()
-            return await resp.text(encoding="utf-8", errors="replace")
+            return await resp.read()
 
 
-def _save_cache(items: list[CatalogItem], csv_hash: str) -> None:
-    """Persist catalog to disk so restarts don't re-fetch unnecessarily."""
+def _save_cache(items: list[CatalogItem]) -> None:
+    """Persist catalog to disk."""
     try:
-        data = {"hash": csv_hash, "saved_at": time.time(), "items": items}
+        data = {"saved_at": time.time(), "items": items}
         with open(config.CATALOG_CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except OSError as exc:
         log.warning("Could not save catalog cache: %s", exc)
 
 
-def _load_cache() -> tuple[list[CatalogItem], str] | None:
-    """Load catalog from disk cache. Returns None if cache is missing/corrupt."""
+def _load_cache() -> list[CatalogItem] | None:
+    """Load catalog from disk cache."""
     try:
         with open(config.CATALOG_CACHE_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        return data["items"], data["hash"]
+        age_days = (time.time() - data.get("saved_at", 0)) / 86_400
+        if age_days > config.CATALOG_REFRESH_INTERVAL_DAYS:
+            log.info("Cache is %d days old, will refresh.", int(age_days))
+        return data["items"]
     except (OSError, KeyError, json.JSONDecodeError):
         return None
 
 
-async def refresh_catalog(force: bool = False) -> None:
-    """
-    Download the catalog CSV, parse it, and update the in-memory store.
-    If the CSV hash hasn't changed (and force=False), skips the update.
-    """
-    global _catalog, _last_csv_hash, _loaded_at
+async def refresh_catalog() -> None:
+    """Download XLSX, parse it, update in-memory store and cache."""
+    global _catalog, _loaded_at
 
     try:
-        csv_text = await _fetch_csv()
+        xlsx_bytes = await _fetch_xlsx()
     except Exception as exc:
-        log.error("Failed to fetch catalog CSV: %s", exc)
+        log.error("Failed to fetch catalog XLSX: %s", exc)
         return
 
-    new_hash = hashlib.md5(csv_text.encode("utf-8")).hexdigest()
-
-    if not force and new_hash == _last_csv_hash:
-        log.info("Catalog CSV unchanged, skipping parse.")
-        _loaded_at = time.time()
-        return
-
-    items = _parse_csv(csv_text)
+    items = _parse_xlsx(xlsx_bytes)
     _catalog = items
-    _last_csv_hash = new_hash
     _loaded_at = time.time()
-
-    _save_cache(items, new_hash)
+    _save_cache(items)
     log.info("Catalog refreshed: %d items loaded.", len(items))
 
 
 async def load_catalog() -> None:
-    """
-    Called once at bot startup.
-    Tries disk cache first, then fetches fresh if needed.
-    """
-    global _catalog, _last_csv_hash, _loaded_at
+    """Called once at bot startup."""
+    global _catalog, _loaded_at
 
     cached = _load_cache()
     if cached:
-        _catalog, _last_csv_hash = cached
+        _catalog = cached
         _loaded_at = time.time()
         log.info("Catalog loaded from cache: %d items.", len(_catalog))
         # Refresh in background without blocking startup
         asyncio.create_task(refresh_catalog())
     else:
         log.info("No catalog cache found, fetching fresh…")
-        await refresh_catalog(force=True)
+        await refresh_catalog()
 
 
 async def schedule_weekly_refresh() -> None:
-    """Background task: check for catalog updates once per week."""
+    """Background task: refresh catalog once per week."""
     interval_seconds = config.CATALOG_REFRESH_INTERVAL_DAYS * 86_400
     while True:
         await asyncio.sleep(interval_seconds)
@@ -269,18 +280,15 @@ async def schedule_weekly_refresh() -> None:
 # ──────────────────────────────────────────────────────────
 
 def get_catalog() -> list[CatalogItem]:
-    """Return the full cached catalog (only target categories)."""
     return _catalog
 
 
 def get_by_category(category: str) -> list[CatalogItem]:
-    """Return items for a given category (case-insensitive)."""
     cat_upper = category.upper()
     return [item for item in _catalog if item["category"].upper() == cat_upper]
 
 
 def get_by_article(article: str) -> CatalogItem | None:
-    """Exact lookup by article name."""
     for item in _catalog:
         if item["article"] == article:
             return item
@@ -288,11 +296,7 @@ def get_by_article(article: str) -> CatalogItem | None:
 
 
 def search_catalog(query: str, limit: int = 8) -> list[CatalogItem]:
-    """
-    Fuzzy search across article names.
-    Uses rapidfuzz for speed — zero AI tokens, sub-millisecond.
-    Falls back to simple substring match if rapidfuzz is unavailable.
-    """
+    """Fuzzy search across article names — zero AI tokens."""
     if not query.strip():
         return []
 
