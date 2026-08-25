@@ -557,7 +557,7 @@ async def menu_go_callback(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP_TEXT)
+    await message.answer(HELP_TEXT, parse_mode="HTML")
 
 
 async def cmd_cancel(message: Message, state: FSMContext) -> None:
