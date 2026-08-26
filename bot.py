@@ -144,9 +144,7 @@ FEEDBACK_BUTTON_EXPECTED_TEXT = "Пожалуйста, выбери один и�
 #  Catalog texts
 # ──────────────────────────────────────────────────────────
 
-CATALOG_MAIN_TEXT = "📂 <b>Каталог INTIMNO</b>\n\nВыбери категорию:"
-CATALOG_EMPTY_TEXT = "😕 Каталог пока пуст — попробуй позже."
-CATALOG_LIST_TEXT = "📋 <b>{category}</b> — {total} артикулов\nСтраница {page}/{pages}:"
+CATALOG_MAIN_TEXT = "📂 <b>Каталог INTIMNO</b>\n\nТрусы — {total} артикулов.\nСтраница {page}/{pages}:"
 CATALOG_ITEM_NOT_FOUND_TEXT = "❌ Артикул не найден. Попробуй /find или /catalog."
 
 FIND_PROMPT_TEXT = (
@@ -251,18 +249,13 @@ MENU_NAVIGATE_KEYBOARD = InlineKeyboardMarkup(inline_keyboard=[
 # ──────────────────────────────────────────────────────────
 
 def _build_catalog_main_keyboard() -> InlineKeyboardMarkup:
-    """Two category buttons."""
+    """Single button to open the full list."""
     items = catalog.get_catalog()
-    nb_count = sum(1 for i in items if i["category"] == "НИЖНЕЕ БЕЛЬЕ")
-    bz_count = sum(1 for i in items if i["category"] == "БЫСТРЫЕ ЗАПУСКИ")
+    total = len(items)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=f"🩱 Нижнее бельё ({nb_count})",
-            callback_data="cat:list:НИЖНЕЕ БЕЛЬЕ:0",
-        )],
-        [InlineKeyboardButton(
-            text=f"⚡ Быстрые запуски ({bz_count})",
-            callback_data="cat:list:БЫСТРЫЕ ЗАПУСКИ:0",
+            text=f"🙱 Все трусы ({total})",
+            callback_data="cat:list:ТРУСЫ:0",
         )],
     ])
 
@@ -546,9 +539,12 @@ async def menu_go_callback(callback: CallbackQuery, state: FSMContext) -> None:
         if not items:
             await callback.message.answer(CATALOG_EMPTY_TEXT)
         else:
+            total = len(items)
+            pages = max(1, -(-total // _CATALOG_PAGE_SIZE))
+            text = CATALOG_MAIN_TEXT.format(category="Трусы", total=total, page=1, pages=pages)
             await callback.message.answer(
-                CATALOG_MAIN_TEXT,
-                reply_markup=_build_catalog_main_keyboard(),
+                text,
+                reply_markup=_build_catalog_list_keyboard(items, 0, "ТРУСЫ"),
                 parse_mode="HTML",
             )
     elif action == "find":
@@ -593,41 +589,47 @@ async def cmd_catalog(message: Message, state: FSMContext) -> None:
     if not items:
         await message.answer(CATALOG_EMPTY_TEXT)
         return
+    total = len(items)
+    pages = max(1, -(-total // _CATALOG_PAGE_SIZE))
+    text = CATALOG_MAIN_TEXT.format(category="Трусы", total=total, page=1, pages=pages)
     await message.answer(
-        CATALOG_MAIN_TEXT,
-        reply_markup=_build_catalog_main_keyboard(),
+        text,
+        reply_markup=_build_catalog_list_keyboard(items, 0, "ТРУСЫ"),
         parse_mode="HTML",
     )
 
 
 async def catalog_main_callback(callback: CallbackQuery) -> None:
-    """cat:main — show category selector."""
+    """cat:main — show full list from the start."""
     items = catalog.get_catalog()
     if not items:
         await callback.answer("Каталог пуст", show_alert=True)
         return
+    total = len(items)
+    pages = max(1, -(-total // _CATALOG_PAGE_SIZE))
+    text = CATALOG_MAIN_TEXT.format(category="Трусы", total=total, page=1, pages=pages)
     await callback.message.edit_text(
-        CATALOG_MAIN_TEXT,
-        reply_markup=_build_catalog_main_keyboard(),
+        text,
+        reply_markup=_build_catalog_list_keyboard(items, 0, "ТРУСЫ"),
         parse_mode="HTML",
     )
     await callback.answer()
 
 
 async def catalog_list_callback(callback: CallbackQuery) -> None:
-    """cat:list:<category>:<page> — paginated article list."""
+    """cat:list:ТРУСЫ:<page> — paginated article list."""
     parts = callback.data.split(":", 3)
     category = parts[2]
     page = int(parts[3]) if len(parts) > 3 else 0
 
     items = catalog.get_by_category(category)
     if not items:
-        await callback.answer("Нет артикулов в этой категории", show_alert=True)
+        await callback.answer("Нет артикулов", show_alert=True)
         return
 
     total = len(items)
     pages = max(1, -(-total // _CATALOG_PAGE_SIZE))
-    text = CATALOG_LIST_TEXT.format(category=category, total=total, page=page + 1, pages=pages)
+    text = CATALOG_MAIN_TEXT.format(category="Трусы", total=total, page=page + 1, pages=pages)
     await callback.message.edit_text(
         text,
         reply_markup=_build_catalog_list_keyboard(items, page, category),
@@ -678,7 +680,7 @@ async def find_got_query(message: Message, state: FSMContext) -> None:
         return
     rows = [
         [InlineKeyboardButton(
-            text=f"{'\ud83e\ude71' if r['category'] == 'НИЖНЕЕ БЕЛЬЕ' else '\u26a1'} {r['article']}",
+            text=f"🙱 {r['article']}",
             callback_data=f"cat:item:{r['article']}",
         )]
         for r in results

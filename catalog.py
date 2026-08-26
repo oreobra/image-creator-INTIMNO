@@ -145,13 +145,8 @@ def _parse_xlsx(xlsx_bytes: bytes) -> list[CatalogItem]:
         if not article:
             continue
 
-        if current_category.upper() not in _INCLUDED_CATEGORIES_UPPER:
-            continue
-
-        category = (
-            "НИЖНЕЕ БЕЛЬЕ" if "НИЖНЕЕ БЕЛЬЕ" in current_category.upper()
-            else "БЫСТРЫЕ ЗАПУСКИ"
-        )
+        # All matched rows go under one unified category
+        category = "ТРУСЫ"
 
         wb_url   = _clean(_best_url(wb_cell))
         ozon_url = _clean(_best_url(ozon_cell))
