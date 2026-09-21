@@ -2,6 +2,9 @@ import asyncio
 import io
 import json
 import logging
+import random
+import re
+import time
 
 import replicate
 
@@ -32,9 +35,114 @@ def _parse_output(output) -> str:
     return str(output).strip()
 
 
+# ──────────────────────────────────────────────────────────
+#  Retry helpers for transient Replicate errors
+#  (429 rate-limit / burst throttle, E003 high-demand, network blips)
+# ──────────────────────────────────────────────────────────
+
+# Lowercase fragments that mark an error as worth retrying.
+_RETRYABLE_FRAGMENTS = (
+    "429", "too many requests", "throttled", "rate limit", "rate_limit",
+    "retry_after", "retry-after",
+    "e003", "high demand", "try again later", "temporarily unavailable",
+    "connection reset", "connection aborted", "timeout", "timed out",
+    "503", "504", "bad gateway", "service unavailable",
+)
+
+# How many total attempts we make before giving up.
+_REPLICATE_MAX_ATTEMPTS = 4
+# Base delay (seconds) for exponential backoff when no retry_after is reported.
+_REPLICATE_BASE_DELAY = 2.0
+
+
+def _is_censorship_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(kw in text for kw in _CENSORSHIP_KEYWORDS)
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(frag in text for frag in _RETRYABLE_FRAGMENTS)
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Extract a server-suggested wait from the error, if present."""
+    text = str(exc)
+    # JSON form, e.g. {"retry_after": 3}
+    m = re.search(r'"retry_after"\s*:\s*([0-9]+)', text)
+    if m:
+        return float(m.group(1))
+    # Human form, e.g. "rate limit resets in ~5s"
+    m = re.search(r"resets? in ~?([0-9]+)s", text, re.IGNORECASE)
+    if m:
+        return float(m.group(1))
+    # "Retry in N seconds"
+    m = re.search(r"retry in ([0-9]+) second", text, re.IGNORECASE)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _reset_input_streams(input_data: dict) -> None:
+    """Rewind any BytesIO streams so a retried upload re-sends the full payload."""
+    for value in input_data.values():
+        if isinstance(value, io.IOBase):
+            try:
+                value.seek(0)
+            except (OSError, ValueError):
+                pass
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, io.IOBase):
+                    try:
+                        item.seek(0)
+                    except (OSError, ValueError):
+                        pass
+
+
+def _replicate_call(call, *, skip_censorship: bool = False) -> str | None:
+    """
+    Run a Replicate call, retrying on transient errors (429 / E003 / network).
+
+    `call` is a zero-arg callable performing one Replicate request and returning
+    its raw output (parsed afterwards). If `skip_censorship` is True, a
+    content-filter error is re-raised immediately without retrying.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, _REPLICATE_MAX_ATTEMPTS + 1):
+        try:
+            return call()
+        except Exception as exc:
+            last_exc = exc
+            if skip_censorship and _is_censorship_error(exc):
+                raise
+            if not _is_retryable_error(exc) or attempt == _REPLICATE_MAX_ATTEMPTS:
+                raise
+            wait = _retry_after_seconds(exc)
+            if wait is None:
+                wait = _REPLICATE_BASE_DELAY * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
+            else:
+                # Respect the server hint, but add a small jitter.
+                wait += random.uniform(0, 0.5)
+            logger.warning(
+                "Replicate transient error (attempt %d/%d), retrying in %.1fs: %s",
+                attempt, _REPLICATE_MAX_ATTEMPTS, wait, str(exc)[:200],
+            )
+            time.sleep(wait)
+    # Should be unreachable, but keep the linter happy.
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("Replicate call failed without an exception")
+
+
 def _replicate_run(model: str, input_data: dict) -> str:
     client = replicate.Client(api_token=config.REPLICATE_API_TOKEN)
-    return _parse_output(client.run(model, input=input_data))
+
+    def _call():
+        _reset_input_streams(input_data)
+        return _parse_output(client.run(model, input=input_data))
+
+    return _replicate_call(_call)
 
 
 # ──────────────────────────────────────────────────────────
@@ -655,23 +763,28 @@ def _generate_sync(prompt: str, panties_images_bytes: list[bytes]) -> str | None
     Call NanaBanana Pro on Replicate.
     Always 3:4 portrait, 1K resolution, PNG output.
     Accepts one or several panties photos (e.g. front/back).
+    Retries on transient Replicate errors (429 / E003 / network), but never
+    retries a content-filter rejection (handled upstream as CensorshipError).
     """
     client = replicate.Client(api_token=config.REPLICATE_API_TOKEN)
-    output = client.run(
-        config.GENERATION_MODEL,
-        input={
-            "prompt": prompt,
-            "image_input": [io.BytesIO(b) for b in panties_images_bytes],
-            "aspect_ratio": "3:4",
-            "resolution": "1K",
-            "output_format": "png",
-            "safety_filter_level": "block_only_high",
-            "allow_fallback_model": False,
-        },
-    )
-    if isinstance(output, list):
-        return str(output[0]) if output else None
-    return str(output) if output else None
+    input_data = {
+        "prompt": prompt,
+        "image_input": [io.BytesIO(b) for b in panties_images_bytes],
+        "aspect_ratio": "3:4",
+        "resolution": "1K",
+        "output_format": "png",
+        "safety_filter_level": "block_only_high",
+        "allow_fallback_model": False,
+    }
+
+    def _call():
+        _reset_input_streams(input_data)
+        output = client.run(config.GENERATION_MODEL, input=input_data)
+        if isinstance(output, list):
+            return str(output[0]) if output else None
+        return str(output) if output else None
+
+    return _replicate_call(_call, skip_censorship=True)
 
 
 async def generate_image(prompt: str, panties_images_bytes: list[bytes]) -> str | None:
