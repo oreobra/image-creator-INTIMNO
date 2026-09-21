@@ -11,7 +11,7 @@ REPLICATE_API_TOKEN: str = os.getenv("REPLICATE_API_TOKEN", "")
 #   composing the actual generation prompts (reference/describe/style).
 # FAST_MODEL (Haiku) — used for short, low-stakes text tasks: panties count/material read-off,
 #   short prop descriptions, feedback summarization. Same request shape as ANALYSIS_MODEL, much cheaper.
-ANALYSIS_MODEL = "anthropic/claude-4-sonnet"
+ANALYSIS_MODEL = "anthropic/claude-4.5-sonnet"
 FAST_MODEL = "anthropic/claude-4.5-haiku"
 GENERATION_MODEL = "google/nano-banana-pro"
 
